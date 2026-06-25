@@ -20,12 +20,14 @@ import httpx
 from backend import scraper
 from backend.cache import create_redis
 from backend.models import Film
+from backend.omdb import create_omdb_client
 from backend.recommender import recommend
 from backend.tmdb import build_candidate_pool, create_tmdb_client
 
 SEED_LIMIT = 40  # top-rated films whose TMDB recs/similar seed the candidate pool
 SEED_MIN_RATING = 4.0
 MAX_CANDIDATES = 600  # cap enrichment + MMR cost
+CONTENDERS = 120  # pass-1 shortlist that gets OMDb-enriched (under the 1k/day budget)
 TOP_N = 20
 
 
@@ -89,8 +91,36 @@ async def run(username: str) -> None:
             f"(from {len(top_seeds)} seeds + backfill) in {time.perf_counter() - t:.0f}s"
         )
 
-        # 4. Recommend --------------------------------------------------------
-        recs = recommend(watched, candidates, provenance, user_mean=user_mean, top_n=TOP_N)
+        # 4. Two-pass scoring with OMDb review enrichment ---------------------
+        # Pass 1: rank candidates by score (λ=1 ⇒ pure relevance) to pick contenders.
+        prov_by_id = dict(zip([f.tmdb_id for f in candidates], provenance, strict=True))
+        cand_by_id = {f.tmdb_id: f for f in candidates}
+        pass1 = recommend(
+            watched,
+            candidates,
+            provenance,
+            user_mean=user_mean,
+            top_n=CONTENDERS,
+            mmr_lambda=1.0,
+        )
+        contenders = [cand_by_id[r.tmdb_id] for r in pass1]
+        contender_prov = [prov_by_id[r.tmdb_id] for r in pass1]
+
+        # OMDb-enrich the contenders (IMDb + Metacritic), if a key is configured.
+        omdb = create_omdb_client(http, redis)
+        if omdb is not None:
+            t = time.perf_counter()
+            await omdb.enrich(contenders)
+            got = sum(1 for f in contenders if f.imdb_rating is not None)
+            print(
+                f"  OMDb-enriched {got}/{len(contenders)} contenders "
+                f"in {time.perf_counter() - t:.0f}s"
+            )
+        else:
+            print("  OMDb key not set — using TMDB-only quality")
+
+        # Pass 2: final picks on the enriched contenders (review-aware quality).
+        recs = recommend(watched, contenders, contender_prov, user_mean=user_mean, top_n=TOP_N)
 
     await redis.aclose()
 
@@ -99,13 +129,31 @@ async def run(username: str) -> None:
     med_votes = int(statistics.median([f.vote_count or 0 for f in rec_films])) if rec_films else 0
     years = [f.year for f in rec_films if f.year]
     mean_year = int(statistics.mean(years)) if years else 0
+    imdbs = [f.imdb_rating for f in rec_films if f.imdb_rating is not None]
+    metas = [f.metascore for f in rec_films if f.metascore is not None]
+    review = ""
+    if imdbs:
+        review += f" · mean IMDb {statistics.mean(imdbs):.1f}"
+    if metas:
+        review += f" · mean Metascore {int(statistics.mean(metas))}"
     print(
         f"\n  TOP {len(recs)} RECOMMENDATIONS for @{scrape.username}"
-        f"   (median TMDB votes: {med_votes:,} · mean year: {mean_year})\n  " + "─" * 60
+        f"   (median TMDB votes: {med_votes:,} · mean year: {mean_year}{review})\n  " + "─" * 60
     )
     for i, r in enumerate(recs, 1):
         year = f" ({r.year})" if r.year else ""
         print(f"\n  {i:>2}. {r.title}{year}   score={r.score:.3f}")
+        film = cand_map.get(r.tmdb_id)
+        if film is not None:
+            bits = []
+            if film.imdb_rating is not None:
+                bits.append(f"IMDb {film.imdb_rating}")
+            if film.metascore is not None:
+                bits.append(f"Metascore {film.metascore}")
+            if film.rotten_tomatoes is not None:
+                bits.append(f"RT {film.rotten_tomatoes}%")
+            if bits:
+                print(f"      reviews: {' · '.join(bits)}")
         if r.shared_traits:
             print(f"      traits: {', '.join(r.shared_traits)}")
         if r.because:

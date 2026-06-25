@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # Secrets / connections
     tmdb_api_key: str = ""
+    omdb_api_key: str = ""
     redis_url: str | None = None
 
     # TMDB endpoints (rarely change; here so nothing is hardcoded deep in the client)
@@ -33,9 +34,16 @@ class Settings(BaseSettings):
     tmdb_image_base: str = "https://image.tmdb.org/t/p"
     poster_size: str = "w185"
 
+    # OMDb (IMDb + Metacritic + Rotten Tomatoes ratings)
+    omdb_api_base: str = "https://www.omdbapi.com/"
+
     @property
     def tmdb_key_present(self) -> bool:
         return bool(self.tmdb_api_key.strip())
+
+    @property
+    def omdb_key_present(self) -> bool:
+        return bool(self.omdb_api_key.strip())
 
 
 @lru_cache

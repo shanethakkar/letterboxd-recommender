@@ -71,3 +71,23 @@ America, Cape Fear, Blue Velvet, Inside Man, The Killer).
 **Affects:** SPEC §4.4 (rewritten), `backend/recommender.py`, `backend/tmdb.py` (richer discover
 backfill), `backend/validate_recommender.py` (mainstream-shift stats). Knobs are designed to back the
 deferred per-user mood/genre/year filters (SPEC §6.4 / §9).
+
+## 2026-06-25 — Add IMDb + Metacritic (OMDb) to the quality signal
+**Decision:** Blend external review scores into the recommender's quality term. Capture each film's
+`imdb_id` from TMDB (free), then a new `backend/omdb.py` enriches the **top ~120 contenders** with
+IMDb + Metacritic + Rotten Tomatoes via the OMDb API, cached permanently in Redis (`omdb:{imdb_id}`).
+The quality sub-score becomes the per-film mean of available 0–10 signals (TMDB Bayesian + IMDb +
+Metascore/10). Orchestration is **two-pass**: pass-1 ranks candidates (MMR λ=1 ⇒ pure relevance) to
+pick the shortlist, enrich it, then pass-2 re-ranks with review-aware quality.
+**Why:** User: "more likely to enjoy a well-reviewed movie." TMDB's audience score alone is mushy and
+not critic-based. OMDb adds IMDb (audience) + Metacritic/RT (critics) cheaply. Enriching only the
+shortlist keeps usage under OMDb's 1,000/day free limit; permanent caching makes repeat/shared films
+free. **Graceful degradation:** no OMDb key → enrichment skipped, recs use TMDB-only quality (proven
+by tests). Re-run @sthakkar: mean IMDb 7.0 / mean Metascore 63 across the top-20; well-reviewed titles
+rose (Trainspotting 8.1/83, A Simple Plan 7.5/81, Blue Velvet 7.7/75, Talented Mr. Ripley 7.4/76).
+**Affects:** SPEC §2 (stack), §4.2 (OMDb enrichment), §4.4 (review-blended quality); new
+`backend/omdb.py`; `config.py`, `models.py` (`Film` review fields), `tmdb.py` (imdb_id),
+`validate_recommender.py` (two-pass). Requires `OMDB_API_KEY` in `.env` (optional).
+**Note / open lever:** taste still dominates (quality ≈ 1/6 of the score), so a strong taste-match but
+poorly-reviewed film (e.g. Kiss the Girls, RT 35%) can still rank high. If desired, raise `w_quality`
+or add a review floor — left as a tunable, not changed by default.

@@ -41,6 +41,30 @@ def test_mainstream_prior_favors_quality_popular_recent() -> None:
     assert prior[0] > prior[1]
 
 
+def test_quality_term_honours_imdb_and_metacritic() -> None:
+    # Identical TMDB stats; the film with higher IMDb + Metacritic must score a higher prior.
+    high = Film(
+        tmdb_id=1,
+        title="H",
+        vote_average=7.0,
+        vote_count=5000,
+        year=2015,
+        imdb_rating=8.6,
+        metascore=90,
+    )
+    low = Film(
+        tmdb_id=2,
+        title="L",
+        vote_average=7.0,
+        vote_count=5000,
+        year=2015,
+        imdb_rating=5.0,
+        metascore=40,
+    )
+    prior = mainstream_prior([high, low])
+    assert prior[0] > prior[1]
+
+
 def test_vote_floor_filters_obscure_candidates() -> None:
     films = [
         Film(tmdb_id=1, title="A", vote_count=1000),

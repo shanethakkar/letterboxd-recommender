@@ -122,6 +122,7 @@ class TMDBClient:
             popularity=data.get("popularity"),
             vote_average=data.get("vote_average"),
             vote_count=data.get("vote_count"),
+            imdb_id=data.get("imdb_id"),  # top-level on /movie/{id} — free, no extra call
         )
 
     def _poster_url(self, poster_path: str | None) -> str | None:

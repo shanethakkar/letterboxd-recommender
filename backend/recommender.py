@@ -85,8 +85,10 @@ def mainstream_prior(
 ) -> np.ndarray:
     """A [0,1] prior favouring well-rated, widely-seen, more recent films.
 
-    - quality = Bayesian rating: `vote_average` shrunk toward the pool mean by `vote_count`
-      (so a high score needs enough votes to count — no 9.0-from-12-votes flukes).
+    - quality = per-film mean of the available review scores on a 0–10 scale: a TMDB
+      Bayesian rating (vote_average shrunk toward the pool mean by vote_count — no
+      9.0-from-12-votes flukes), plus IMDb rating and Metacritic/10 when OMDb-enriched.
+      Films without OMDb data just use the TMDB score (graceful).
     - popularity = log1p(vote_count) — "how widely seen", steadier than TMDB `popularity`.
     - recency = normalized release year (missing year → treated as least-recent).
     Each sub-score is min-max normalized across the pool, then blended.
@@ -97,9 +99,19 @@ def mainstream_prior(
 
     voted = vc > 0
     pool_mean = float(va[voted].mean()) if voted.any() else 6.5
-    quality = (vc / (vc + bayes_strength)) * va + (
+    tmdb_bayes = (vc / (vc + bayes_strength)) * va + (
         bayes_strength / (vc + bayes_strength)
     ) * pool_mean
+
+    quality = np.empty(len(films), dtype=float)
+    for i, f in enumerate(films):
+        signals = [float(tmdb_bayes[i])]
+        if f.imdb_rating is not None:
+            signals.append(f.imdb_rating)
+        if f.metascore is not None:
+            signals.append(f.metascore / 10.0)
+        quality[i] = sum(signals) / len(signals)
+
     popularity = np.log1p(vc)
     if (yr > 0).any():
         yr = np.where(yr > 0, yr, yr[yr > 0].min())

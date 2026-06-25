@@ -56,6 +56,14 @@ _Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (proj
   - Evidence: re-run median TMDB votes 3,256 (was obscure), mean year 2004; recognizable on-taste
     titles (Trainspotting, Once Upon a Time in America, Cape Fear, Blue Velvet, Inside Man, The
     Killer). 20 tests pass, ruff clean.
+- [x] **Review scores (per user feedback): IMDb + Metacritic via OMDb**
+  - New `backend/omdb.py` enriches the top ~120 contenders with IMDb/Metacritic/RT (cached
+    permanently); quality term now blends TMDB + IMDb + Metascore. Two-pass orchestration
+    (pass-1 λ=1 shortlist → OMDb enrich → pass-2). Graceful no-key fallback (TMDB-only).
+  - Evidence: re-run top-20 mean IMDb 7.0 / mean Metascore 63; well-reviewed titles rose
+    (Trainspotting 8.1/83, A Simple Plan 7.5/81, Blue Velvet 7.7/75). 27 tests pass, ruff clean.
+  - Known lever: taste still dominates (~1/6 weight on quality) so a strong-match-but-poorly-
+    reviewed film can still rank high; raise `w_quality` / add a review floor if wanted.
 - Next: Phase 2 — UMAP projection, clusters, kNN edges, assemble the SPEC §5 graph payload.
 
 ## Phase 1 retro (what I learned)

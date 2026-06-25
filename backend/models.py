@@ -25,10 +25,17 @@ class Film(BaseModel):
     poster_url: str | None = None
     tmdb_recommendations: list[int] = Field(default_factory=list)
     tmdb_similar: list[int] = Field(default_factory=list)
-    # Popularity signals (used as a small prior in scoring; SPEC §4.4).
+    # Popularity / quality signals (used in the scoring prior; SPEC §4.4).
     popularity: float | None = None
     vote_average: float | None = None
     vote_count: int | None = None
+    # External review scores (OMDb: IMDb + Metacritic + Rotten Tomatoes). imdb_id is read
+    # from TMDB (free); the rest are filled in by the OMDb enrichment step when available.
+    imdb_id: str | None = None
+    imdb_rating: float | None = None  # 0–10
+    imdb_votes: int | None = None
+    metascore: int | None = None  # 0–100
+    rotten_tomatoes: int | None = None  # 0–100
     # Set for watched films (carried over from the scrape) — drives the taste vector.
     rating: float | None = None
     liked: bool = False
