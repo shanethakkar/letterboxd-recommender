@@ -23,6 +23,27 @@ phase before working; do NOT inline the whole spec into context).
   DECISIONS.md.
 - Commit per logical change with a descriptive message. Never commit secrets.
 
+## End-of-phase checklist — Definition of Done (do NOT skip; runs every phase)
+Before declaring any phase complete, ALL of these must be done — treat it as a hard gate:
+1. **PROGRESS.md updated** — check off the phase's tasks, record findings + the next concrete
+   action, and bump the `_Last updated_` line. PROGRESS.md must reflect reality at all times.
+2. **DECISIONS.md updated** *(if anything diverged from SPEC)* — append a dated entry (what
+   changed, why, what it affects). If the design *intent* changed, also edit **SPEC.md** so it
+   never goes stale. If nothing diverged, state that explicitly in the phase notes.
+3. **Verified with evidence** — tests/commands/output or a screenshot pasted, not just asserted.
+4. **Phase retro** captured in PROGRESS.md ("what did I learn?").
+5. **Commit + push** — commit the phase with a descriptive message, then `git push` to `origin`
+   (see Git below). Never commit `.env` or any secret.
+
+Mid-phase, also update PROGRESS.md / append DECISIONS.md the moment something meaningful changes —
+don't batch it all to the end, and never let a design change land without a DECISIONS.md entry.
+
+## Git
+- Remote `origin` is the GitHub repo; pushes use Git Credential Manager (already configured).
+- **Commit at the end of every phase and push to `origin`.** Smaller logical commits within a
+  phase are encouraged. End commit messages with the Co-Authored-By trailer.
+- `.env`, `uv.lock`, and `.venv/` are gitignored — verify `git status` shows no secrets before committing.
+
 ## Stack
 - Backend: Python 3.12, FastAPI, httpx (async), scikit-learn, numpy, umap-learn, redis.
 - Frontend: TypeScript, Next.js (React), deck.gl (PixiJS only if needed).
