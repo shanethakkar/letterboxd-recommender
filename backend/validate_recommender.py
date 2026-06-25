@@ -11,6 +11,7 @@ First run warms the permanent slug→tmdb_id cache and is the slow one; re-runs 
 from __future__ import annotations
 
 import asyncio
+import statistics
 import sys
 import time
 
@@ -71,7 +72,7 @@ async def run(username: str) -> None:
         seeds = sorted(watched, key=lambda f: f.rating or 0.0, reverse=True)
         top_seeds = [f for f in seeds if (f.rating or 0) >= SEED_MIN_RATING][:SEED_LIMIT]
         top_seeds = top_seeds or seeds[:SEED_LIMIT]
-        backfill = await tmdb.discover_backfill(pages=2)
+        backfill = await tmdb.discover_backfill()
         provenance_map = build_candidate_pool(top_seeds, scrape.logged_tmdb_ids(), backfill)
         ranked = sorted(provenance_map.items(), key=lambda kv: kv[1], reverse=True)[:MAX_CANDIDATES]
 
@@ -94,7 +95,14 @@ async def run(username: str) -> None:
     await redis.aclose()
 
     # 5. Print for gut-check --------------------------------------------------
-    print(f"\n  TOP {len(recs)} RECOMMENDATIONS for @{scrape.username}\n  " + "─" * 60)
+    rec_films = [cand_map[r.tmdb_id] for r in recs if r.tmdb_id in cand_map]
+    med_votes = int(statistics.median([f.vote_count or 0 for f in rec_films])) if rec_films else 0
+    years = [f.year for f in rec_films if f.year]
+    mean_year = int(statistics.mean(years)) if years else 0
+    print(
+        f"\n  TOP {len(recs)} RECOMMENDATIONS for @{scrape.username}"
+        f"   (median TMDB votes: {med_votes:,} · mean year: {mean_year})\n  " + "─" * 60
+    )
     for i, r in enumerate(recs, 1):
         year = f" ({r.year})" if r.year else ""
         print(f"\n  {i:>2}. {r.title}{year}   score={r.score:.3f}")

@@ -53,3 +53,21 @@ re-built each run; rely on real Redis (prod, or a local Redis later) for cross-r
 **Why:** No Redis service on this machine (Phase 0 decision). Acceptable for Phase 1 validation
 (~85s re-scrape); revisit if local iteration speed becomes painful.
 **Affects:** `backend/cache.py` behaviour locally; no contract change.
+
+## 2026-06-25 — Recommender tuned toward mainstream + rating-aware "why"
+**Decision:** Bias recommendations toward well-rated, popular, and more recent films, and draw
+explanations only from highly-rated watched films. Concretely: (1) a TMDB **vote-count floor**
+(default 500) drops obscure candidates pre-scoring; (2) the weak popularity prior is replaced by a
+**composite mainstream prior** = Bayesian quality + log(vote_count) popularity + recency; (3) all
+three score components (content / graph / prior) are **min-max normalized** so blend weights mean
+what they say, with new mainstream-leaning defaults (0.55 / 0.15 / 0.45); (4) the "why" neighbours
+are restricted to films rated ≥ the user's average (or liked). All knobs are per-request parameters.
+**Why:** The first gut-check (@sthakkar) surfaced too many obscure/old films (Shattered '91, Bunny
+Lake '65, Metropolis '27) — pure taste-matching + TF-IDF's bias toward rare traits + no quality/
+recency signal + no vote floor. User asked to weight toward recognizable, recent, well-rated films,
+and noted the "why" should cite films they rated highly. Re-run evidence: median TMDB votes rose to
+~3,256 and mean year to 2004, with on-taste, recognizable titles (Trainspotting, Once Upon a Time in
+America, Cape Fear, Blue Velvet, Inside Man, The Killer).
+**Affects:** SPEC §4.4 (rewritten), `backend/recommender.py`, `backend/tmdb.py` (richer discover
+backfill), `backend/validate_recommender.py` (mainstream-shift stats). Knobs are designed to back the
+deferred per-user mood/genre/year filters (SPEC §6.4 / §9).

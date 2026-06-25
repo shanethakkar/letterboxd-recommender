@@ -18,6 +18,9 @@ uv.lock
 .env.local
 *.local
 
+# Generated per-user recommendation reports (personal taste data; keep local)
+recommendations-*.md
+
 # Frontend (added in later phases)
 node_modules/
 .next/

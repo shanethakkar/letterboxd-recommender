@@ -64,7 +64,7 @@ class TMDBClient:
         results = await asyncio.gather(*(_one(i) for i in unique_ids))
         return {tmdb_id: film for r in results if r is not None for tmdb_id, film in [r]}
 
-    async def discover_backfill(self, *, pages: int = 2, min_votes: int = 2000) -> list[int]:
+    async def discover_backfill(self, *, pages: int = 4, min_votes: int = 2000) -> list[int]:
         """Acclaimed/popular backfill ids from `/discover/movie` (SPEC §4.2).
 
         Sorted by vote count with a vote floor, so the pool never starves on users

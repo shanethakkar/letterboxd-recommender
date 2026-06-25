@@ -80,10 +80,11 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 
 ### 4.4 `recommender.py`
 - **Taste vector** = weighted mean of watched-film vectors, weight = `(user_rating − user_mean_rating)`, with liked films given a positive bump. Films below the user's own average pull *negative*.
-- **Score** = cosine(candidate, taste vector), blended with a small popularity prior and the TMDB-recommendation-graph signal (the hybrid/collaborative flavor).
+- **Candidate floor** = drop candidates below a TMDB vote-count floor (default 500) before scoring, so the map isn't full of films nobody has heard of. (Relaxed only if the pool would fall below `top_n`.)
+- **Score** = blend of three **min-max-normalized** components so the weights are comparable: `w_content·cosine(candidate, taste)` + `w_graph·rec-graph-provenance` + `w_prior·mainstream_prior`. The **mainstream prior** = `w_quality·Bayesian-rating` (vote_average shrunk toward the pool mean by vote_count) + `w_popularity·log(vote_count)` + `w_recency·year`. Defaults lean mainstream (`content 0.55 / graph 0.15 / prior 0.45`) but keep taste in the lead; all weights + the floor are **per-request tunable knobs** (a later UI can expose mood / popularity / recency / genre-year filters).
 - **Diversity** = MMR re-ranking so you don't get ten near-identical films.
-- **"Why"** = each recommendation's top-k nearest *watched* neighbors (these become the explanation edges + `shared_traits`).
-- **Sparse profiles** (<~10 ratings): fall back toward genre/popularity priors so the map still renders something meaningful.
+- **"Why"** = each recommendation's top-k nearest **highly-rated** watched neighbors (only films rated at/above the user's average, or liked) — so "because you rated X" always points at a film the user actually liked. These become the explanation edges + `shared_traits`.
+- **Sparse profiles** (<~8 ratings): shift weight onto the mainstream prior so the map still renders something meaningful and recognizable.
 
 ### 4.5 `projection.py`
 - UMAP (`cosine` metric) fit on the combined watched+candidate feature matrix → 2D coords.

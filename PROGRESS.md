@@ -48,6 +48,14 @@ _Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (proj
     "because you rated GoodFellas/The Departed/Se7en…" traces, and MMR diversifies into the
     user's sci-fi (Contact, Metropolis), drama (Finding Forrester), and classic-mystery (Laura)
     sub-tastes. Pipeline timing: scrape ~85–110s (first run), enrich + candidates ~5–30s.
+- [x] **Tuning pass (per user feedback): bias toward mainstream + rating-aware "why"**
+  - Recs were too obscure/old. Added a TMDB vote-count floor (default 500), replaced the weak
+    popularity prior with a composite mainstream prior (Bayesian quality + popularity + recency),
+    normalized all score components, and restricted explanations to films rated ≥ the user's avg.
+    All knobs are per-request params (ready for future UI filters). See DECISIONS + SPEC §4.4.
+  - Evidence: re-run median TMDB votes 3,256 (was obscure), mean year 2004; recognizable on-taste
+    titles (Trainspotting, Once Upon a Time in America, Cape Fear, Blue Velvet, Inside Man, The
+    Killer). 20 tests pass, ruff clean.
 - Next: Phase 2 — UMAP projection, clusters, kNN edges, assemble the SPEC §5 graph payload.
 
 ## Phase 1 retro (what I learned)
