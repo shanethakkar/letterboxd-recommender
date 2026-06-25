@@ -77,12 +77,18 @@ async def scrape_user(
     user_factory: Callable[[str], Any] | None = None,
     movie_factory: Callable[[str], Any] | None = None,
     resolve_concurrency: int = 4,
+    resolve_top: int = 200,
+    resolve_bottom: int = 100,
 ) -> ScrapeResult:
     """Scrape a public Letterboxd profile into a `ScrapeResult`.
 
-    Resolves TMDB ids only for films that carry taste signal (rated or liked) plus the
-    watchlist (for exclusion); unrated-watched films are left with `tmdb_id=None` (a small,
-    documented exclusion gap, cheap to close later since results are cached).
+    The full rating list is cheap (paginated); resolving each film's TMDB id is one request
+    per film (expensive). So we pull every rating (the mean stays exact) but budget tmdb-id
+    resolution to the **most informative** films: the top-`resolve_top` and bottom-
+    `resolve_bottom` rated (the extremes that drive the taste vector — near-mean films have
+    weight ≈ 0), plus all liked films and the watchlist (for exclusion). Profiles with
+    ≲ `resolve_top + resolve_bottom` rated films resolve everything; huge profiles stay fast.
+    Unresolved films keep `tmdb_id=None` (documented exclusion gap; the cache closes it over runs).
     """
     if user_factory is None or movie_factory is None:
         default_user, default_movie = _default_factories()
@@ -122,10 +128,18 @@ async def scrape_user(
     except Exception as exc:  # noqa: BLE001
         logger.warning("watchlist fetch failed for %s: %s", username, exc)
 
-    # 3. Resolve slug -> tmdb_id (cached, bounded concurrency) for taste + watchlist films.
+    # 3. Resolve slug -> tmdb_id (cached, bounded concurrency) for the informative slice.
     sem = asyncio.Semaphore(resolve_concurrency)
-    taste_films = [f for f in films if f.rating is not None or f.liked]
-    to_resolve = {f.slug for f in taste_films} | set(watchlist_slugs)
+    rated_desc = sorted(
+        (f for f in films if f.rating is not None),
+        key=lambda f: f.rating or 0.0,
+        reverse=True,
+    )
+    informative = {f.slug for f in rated_desc[:resolve_top]}
+    if resolve_bottom > 0:
+        informative.update(f.slug for f in rated_desc[-resolve_bottom:])
+    informative.update(f.slug for f in films if f.liked)  # likes are always informative
+    to_resolve = informative | set(watchlist_slugs)
     resolved = await _resolve_slugs(to_resolve, redis, movie_factory, sem)
 
     for f in films:

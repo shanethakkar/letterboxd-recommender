@@ -64,6 +64,15 @@ _Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (proj
     (Trainspotting 8.1/83, A Simple Plan 7.5/81, Blue Velvet 7.7/75). 27 tests pass, ruff clean.
   - Known lever: taste still dominates (~1/6 weight on quality) so a strong-match-but-poorly-
     reviewed film can still rank high; raise `w_quality` / add a review floor if wanted.
+- [x] **Accuracy work: eval harness + budgeted scrape + opt-in taste facets**
+  - `evaluate.py` (SPEC §4.7): leave-one-out pool-recall@N + recall@K → accuracy is now a number.
+  - Budgeted scrape (scraper.py): resolve only top-200/bottom-100 rated + likes/watchlist → huge
+    profiles stay fast; dynamic seeds (≥4★ up to 150, was 40).
+  - Multi-centroid taste (recommender `n_clusters`) added but **default off** — see finding.
+  - **Finding (@sthakkar, evidence): pool-recall ≈ 13%** → candidate recall is the ceiling, not the
+    ranking model; multi-centroid (k=5) showed no gain vs k=1. 32 tests pass, ruff clean.
+  - Next accuracy lever (Tier 2): widen candidate recall (2-hop TMDB graph, larger cap, taste-filtered
+    discover) — now measurable via the harness.
 - Next: Phase 2 — UMAP projection, clusters, kNN edges, assemble the SPEC §5 graph payload.
 
 ## Phase 1 retro (what I learned)

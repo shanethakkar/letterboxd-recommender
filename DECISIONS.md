@@ -91,3 +91,20 @@ rose (Trainspotting 8.1/83, A Simple Plan 7.5/81, Blue Velvet 7.7/75, Talented M
 **Note / open lever:** taste still dominates (quality ≈ 1/6 of the score), so a strong taste-match but
 poorly-reviewed film (e.g. Kiss the Girls, RT 35%) can still rank high. If desired, raise `w_quality`
 or add a review floor — left as a tunable, not changed by default.
+
+## 2026-06-25 — Eval harness + budgeted scrape; multi-centroid kept opt-in
+**Decision:** (1) Add a leave-one-out eval harness (`backend/evaluate.py`, SPEC §4.7) reporting
+pool-recall@N and recall@K. (2) Budget the scrape: pull the full rating list (exact mean) but resolve
+`slug→tmdb_id` only for the top-`resolve_top`(200) + bottom-`resolve_bottom`(100) rated + likes +
+watchlist; seeds are dynamic (all ≥4★ up to `SEED_MAX`=150, was fixed 40). (3) Add multi-centroid
+taste (`n_clusters`) but **default to single-centroid** — the harness showed no gain.
+**Why:** User wanted higher accuracy + dynamic seeds without scraping thousands of films for huge
+profiles. The budget is principled (skipped films are near-mean → taste-weight ≈ 0) and turns a
+~30-min scrape into ~2 min. The harness made "more accurate" measurable. **Key finding (@sthakkar):**
+pool-recall ≈ **13%** — ~87% of held-out favourites aren't even reachable in the candidate pool, so
+**candidate recall, not the taste model, is the ceiling**; multi-centroid (k=5) matched/under-performed
+k=1, so it's opt-in pending recall work. Decision driven by evidence, not intuition.
+**Affects:** SPEC §4.1 (budgeted scrape), §4.4 (opt-in facets), new §4.7 (evaluation); new
+`backend/evaluate.py`; `scraper.py` (budget), `recommender.py` (taste_centroids/content_scores,
+`n_clusters`), `validate_recommender.py` (SEED_MAX). **Next accuracy lever:** widen candidate recall
+(deeper/2-hop TMDB graph, larger candidate cap, taste-filtered discover) — Tier 2.

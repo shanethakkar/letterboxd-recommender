@@ -7,10 +7,12 @@ from backend.models import Film
 from backend.recommender import (
     _apply_vote_floor,
     _explanations,
+    content_scores,
     mainstream_prior,
     mmr_select,
     recommend,
     score_candidates,
+    taste_centroids,
     taste_vector,
 )
 
@@ -23,13 +25,39 @@ def test_taste_vector_points_toward_liked_traits() -> None:
     assert taste[1] < 0  # away from the low-rated film's trait
 
 
-def test_score_favors_taste_aligned_candidate() -> None:
-    taste = np.array([1.0, 0.0])
-    cand = sp.csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]]))  # aligned, anti-aligned
+def test_score_favors_higher_content() -> None:
+    content_raw = np.array([1.0, 0.0])  # candidate 0 matches taste, candidate 1 doesn't
     scores = score_candidates(
-        cand, taste, [0, 0], np.zeros(2), w_content=1.0, w_graph=0.0, w_prior=0.0
+        content_raw, [0, 0], np.zeros(2), w_content=1.0, w_graph=0.0, w_prior=0.0
     )
     assert scores[0] > scores[1]
+
+
+def test_taste_centroids_find_two_facets() -> None:
+    matrix = sp.csr_matrix(
+        np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]])
+    )
+    pos_c, neg_c = taste_centroids(
+        matrix, [5.0, 5.0, 5.0, 5.0], [False] * 4, user_mean=3.0, n_clusters=2
+    )
+    assert pos_c.shape[0] == 2  # two distinct taste facets
+    assert neg_c is None  # nothing rated below the mean
+
+
+def test_multicentroid_scores_minority_facet_higher_than_single() -> None:
+    # User loves facet A (3 films) + facet B (1 film). A pure-B candidate is "minority taste":
+    # a single averaged vector buries it; max-over-centroids surfaces it.
+    watched = sp.csr_matrix(np.array([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0], [0.0, 1.0]]))
+    ratings, liked = [5.0, 5.0, 5.0, 5.0], [False] * 4
+    cand = sp.csr_matrix(np.array([[0.0, 1.0]]))  # pure facet B
+
+    single = taste_vector(watched, ratings, liked, user_mean=3.0, liked_bump=0.0)
+    single_score = float((cand @ single)[0])
+
+    pos_c, neg_c = taste_centroids(watched, ratings, liked, user_mean=3.0, n_clusters=2)
+    multi_score = float(content_scores(cand, pos_c, neg_c)[0])
+
+    assert multi_score > single_score
 
 
 def test_mainstream_prior_favors_quality_popular_recent() -> None:

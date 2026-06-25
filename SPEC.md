@@ -65,6 +65,7 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 - Input: username. Output: list of `{tmdb_id, slug, title, year, rating?, liked?, in_watchlist?}`.
 - Pull rated films, liked films, and watchlist (for exclusion). Handle private profiles gracefully (return a clear error the frontend can render).
 - Be polite: concurrency cap, jittered delays, realistic User-Agent, retry/backoff on 429/403.
+- **Budgeted resolution:** the full rating list is cheap (paginated) but each `slug→tmdb_id` is one request/film. So pull every rating (exact mean) but resolve tmdb_ids only for the most informative slice — the top-`resolve_top` and bottom-`resolve_bottom` rated (the extremes that move the taste vector) plus likes + watchlist. Small profiles resolve everything; huge profiles stay fast. Seeds are dynamic (all films ≥4★ up to a cap), not a fixed count.
 
 ### 4.2 `tmdb.py`
 - Async client (httpx). Single batched call per film via `append_to_response`.
@@ -84,6 +85,7 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 - **Taste vector** = weighted mean of watched-film vectors, weight = `(user_rating − user_mean_rating)`, with liked films given a positive bump. Films below the user's own average pull *negative*.
 - **Candidate floor** = drop candidates below a TMDB vote-count floor (default 500) before scoring, so the map isn't full of films nobody has heard of. (Relaxed only if the pool would fall below `top_n`.)
 - **Score** = blend of three **min-max-normalized** components so the weights are comparable: `w_content·cosine(candidate, taste)` + `w_graph·rec-graph-provenance` + `w_prior·mainstream_prior`. The **mainstream prior** = `w_quality·review-score` + `w_popularity·log(vote_count)` + `w_recency·year`, where **review-score** is the per-film mean of the available ratings on a 0–10 scale: a TMDB Bayesian rating (vote_average shrunk toward the pool mean by vote_count) plus the IMDb rating and Metacritic/10 when OMDb-enriched (films without OMDb data just use TMDB). Defaults lean mainstream (`content 0.55 / graph 0.15 / prior 0.45`) but keep taste in the lead; all weights + the floor are **per-request tunable knobs** (a later UI can expose mood / popularity / recency / genre-year filters).
+- **Taste facets (opt-in):** a single averaged taste vector blurs multi-modal taste, so `recommend` supports `n_clusters>1` — KMeans the loved films into facets and score each candidate by its *best* facet (max-over-centroids). Defaults to single-centroid: the eval harness (§4.7) showed no measurable gain on the test profile because **candidate recall, not ranking, is the current ceiling** — kept as a tunable to revisit once recall improves.
 - **Diversity** = MMR re-ranking so you don't get ten near-identical films.
 - **"Why"** = each recommendation's top-k nearest **highly-rated** watched neighbors (only films rated at/above the user's average, or liked) — so "because you rated X" always points at a film the user actually liked. These become the explanation edges + `shared_traits`.
 - **Sparse profiles** (<~8 ratings): shift weight onto the mainstream prior so the map still renders something meaningful and recognizable.
@@ -96,6 +98,10 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 ### 4.6 `cache.py`
 - Redis. Key `rec:{username}`, value = full graph payload, TTL (e.g. 24h). `?refresh=true` busts it.
 - Cache hit → return instantly; frontend fast-forwards the pipeline to the settled state.
+
+### 4.7 `evaluate.py` (accuracy harness)
+- Leave-one-out: hold out a fraction of the user's highly-rated films, build the recommender from the rest (held-out films treated as unseen so they *can* be recommended), and measure **pool-recall@N** (held-out films reachable in the candidate pool) + **recall@K** (held-out films ranked into the top-K), averaged over splits. Compare models (e.g. `--clusters`) on the same splits.
+- Turns "more accurate" into a number. First finding (@sthakkar): pool-recall ≈ 13% → **candidate recall is the dominant ceiling**, not the ranking model; multi-centroid taste showed no gain (left opt-in). Next accuracy work = widen recall (deeper TMDB graph / recs-of-recs, larger candidate cap, taste-filtered discover).
 
 ---
 

@@ -24,7 +24,9 @@ from backend.omdb import create_omdb_client
 from backend.recommender import recommend
 from backend.tmdb import build_candidate_pool, create_tmdb_client
 
-SEED_LIMIT = 40  # top-rated films whose TMDB recs/similar seed the candidate pool
+# Seeds = the user's top-rated films (≥ SEED_MIN_RATING) whose TMDB recs/similar grow the
+# candidate pool. Dynamic: uses all that qualify, up to SEED_MAX (big profiles → broader recall).
+SEED_MAX = 150
 SEED_MIN_RATING = 4.0
 MAX_CANDIDATES = 600  # cap enrichment + MMR cost
 CONTENDERS = 120  # pass-1 shortlist that gets OMDb-enriched (under the 1k/day budget)
@@ -72,8 +74,8 @@ async def run(username: str) -> None:
         # 3. Build + enrich candidate pool ------------------------------------
         t = time.perf_counter()
         seeds = sorted(watched, key=lambda f: f.rating or 0.0, reverse=True)
-        top_seeds = [f for f in seeds if (f.rating or 0) >= SEED_MIN_RATING][:SEED_LIMIT]
-        top_seeds = top_seeds or seeds[:SEED_LIMIT]
+        top_seeds = [f for f in seeds if (f.rating or 0) >= SEED_MIN_RATING][:SEED_MAX]
+        top_seeds = top_seeds or seeds[:SEED_MAX]
         backfill = await tmdb.discover_backfill()
         provenance_map = build_candidate_pool(top_seeds, scrape.logged_tmdb_ids(), backfill)
         ranked = sorted(provenance_map.items(), key=lambda kv: kv[1], reverse=True)[:MAX_CANDIDATES]

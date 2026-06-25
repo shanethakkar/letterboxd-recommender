@@ -113,6 +113,60 @@ async def test_translates_letterboxd_errors(exc_type, domain) -> None:
         await scraper.scrape_user("x", _redis(), user_factory=raising_user, movie_factory=FakeMovie)
 
 
+async def test_budget_resolves_only_top_and_bottom_slice() -> None:
+    # 10 rated films (ratings 0.5..5.0). resolve_top=2 + resolve_bottom=2 → middle 6 skipped.
+    movies = {
+        f"film-{i}": {
+            "slug": f"film-{i}",
+            "name": f"F{i}",
+            "year": 2000 + i,
+            "rating": (i + 1) * 0.5,
+            "liked": False,
+        }
+        for i in range(10)
+    }
+
+    class BigUser:
+        def __init__(self, username: str) -> None:
+            self.username = username
+
+        def get_films(self) -> dict:
+            return {"movies": movies, "rating_average": 2.75}
+
+        def get_watchlist_movies(self) -> dict:
+            return {}
+
+    resolved: list[str] = []
+
+    def tracking_movie(slug: str) -> FakeMovie:
+        resolved.append(slug)
+        return FakeMovie(slug)
+
+    await scraper.scrape_user(
+        "x",
+        _redis(),
+        user_factory=BigUser,
+        movie_factory=tracking_movie,
+        resolve_top=2,
+        resolve_bottom=2,
+    )
+    # top-2 by rating = film-9 (5.0), film-8 (4.5); bottom-2 = film-0 (0.5), film-1 (1.0).
+    assert set(resolved) == {"film-9", "film-8", "film-0", "film-1"}
+
+
+async def test_small_profile_resolves_everything() -> None:
+    res = await scraper.scrape_user(
+        "x",
+        _redis(),
+        user_factory=FakeUser,
+        movie_factory=FakeMovie,
+        resolve_top=200,
+        resolve_bottom=100,
+    )
+    # FakeUser has 1 rated film (film-a); budget covers all → it's resolved.
+    assert next(f for f in res.films if f.slug == "film-a").tmdb_id == 100
+
+
 async def test_empty_profile_raises() -> None:
     class EmptyUser:
         def __init__(self, username: str) -> None:
