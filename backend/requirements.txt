@@ -1,5 +1,5 @@
-# Constellation backend — Phase 0 dependencies.
-# Heavy ML deps (scikit-learn, numpy, umap-learn, letterboxdpy) are added in Phase 1/2.
+# Constellation backend dependencies.
+# umap-learn (projection) is added in Phase 2.
 
 fastapi
 uvicorn[standard]
@@ -8,6 +8,11 @@ redis
 fakeredis
 pydantic
 pydantic-settings
+
+# Phase 1 — scraping + recommender
+letterboxdpy
+scikit-learn
+numpy
 
 # Dev / test
 pytest

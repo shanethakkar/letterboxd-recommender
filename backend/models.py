@@ -25,6 +25,69 @@ class Film(BaseModel):
     poster_url: str | None = None
     tmdb_recommendations: list[int] = Field(default_factory=list)
     tmdb_similar: list[int] = Field(default_factory=list)
+    # Popularity signals (used as a small prior in scoring; SPEC §4.4).
+    popularity: float | None = None
+    vote_average: float | None = None
+    vote_count: int | None = None
+    # Set for watched films (carried over from the scrape) — drives the taste vector.
+    rating: float | None = None
+    liked: bool = False
+
+
+class ScrapedFilm(BaseModel):
+    """A film logged on a Letterboxd profile (watched or watchlisted).
+
+    `tmdb_id` is resolved from the Letterboxd film page (SPEC §4.1) and may be None
+    if that film has no TMDB link or resolution failed.
+    """
+
+    slug: str
+    tmdb_id: int | None = None
+    title: str
+    year: int | None = None
+    rating: float | None = None  # 0.5–5.0, None if watched-but-unrated
+    liked: bool = False
+    in_watchlist: bool = False
+
+
+class ScrapeResult(BaseModel):
+    """Everything pulled for one user: watched films + watchlist (for exclusion)."""
+
+    username: str
+    films: list[ScrapedFilm] = Field(default_factory=list)  # watched
+    watchlist_tmdb_ids: list[int] = Field(default_factory=list)
+    rating_average: float | None = None
+
+    def rated(self) -> list[ScrapedFilm]:
+        """Watched films that carry both a rating and a resolved TMDB id."""
+        return [f for f in self.films if f.rating is not None and f.tmdb_id is not None]
+
+    def logged_tmdb_ids(self) -> set[int]:
+        """All TMDB ids the user has logged (watched + watchlist) — the exclusion set."""
+        ids = {f.tmdb_id for f in self.films if f.tmdb_id is not None}
+        ids.update(self.watchlist_tmdb_ids)
+        return ids
+
+
+class Because(BaseModel):
+    """One explanation edge: a watched film that pulled a recommendation toward the user."""
+
+    id: str  # "tmdb:{id}"
+    title: str
+    contribution: float
+
+
+class Recommendation(BaseModel):
+    """A scored, explained recommendation (internal Phase 1 shape; the SPEC §5 graph
+    payload is assembled in Phase 2)."""
+
+    id: str  # "tmdb:{id}"
+    tmdb_id: int
+    title: str
+    year: int | None = None
+    score: float
+    because: list[Because] = Field(default_factory=list)
+    shared_traits: list[str] = Field(default_factory=list)
 
 
 class Health(BaseModel):
