@@ -1,0 +1,15 @@
+# Constellation backend — Phase 0 dependencies.
+# Heavy ML deps (scikit-learn, numpy, umap-learn, letterboxdpy) are added in Phase 1/2.
+
+fastapi
+uvicorn[standard]
+httpx
+redis
+fakeredis
+pydantic
+pydantic-settings
+
+# Dev / test
+pytest
+pytest-asyncio
+ruff

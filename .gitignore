@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv writes an empty lock here because deps live in backend/requirements.txt
+# (the manifest, per DECISIONS.md), not in pyproject [project].
+uv.lock
+
+# Env / secrets — NEVER commit real keys
+.env
+.env.local
+*.local
+
+# Frontend (added in later phases)
+node_modules/
+.next/
+dist/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
