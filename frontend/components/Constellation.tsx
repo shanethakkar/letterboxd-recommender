@@ -5,6 +5,7 @@ import { IconLayer, LineLayer, ScatterplotLayer, TextLayer } from "@deck.gl/laye
 import { DeckGL } from "@deck.gl/react";
 import { useEffect, useMemo, useState } from "react";
 
+import { thumb } from "@/lib/poster";
 import type { Cluster, GraphNode, GraphPayload, Recommendation } from "@/lib/types";
 
 const LEADER: [number, number, number] = [242, 240, 234];
@@ -72,10 +73,6 @@ function initialView(nodes: GraphNode[]): ViewState {
 function sizeOf(n: GraphNode): number {
   if (n.type === "recommended") return 30 + (n.score ?? 0) * 32; // ~30–60
   return 15 + (n.rating ?? 3) * 4; // ~21–35
-}
-
-function thumb(url: string): string {
-  return url.replace("/w185/", "/w154/");
 }
 
 export default function Constellation({

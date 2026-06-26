@@ -112,29 +112,34 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 
 ## 5. API contract (Python → TypeScript)
 
-Scraping can take minutes, so use an async job + SSE stream that also powers the animation.
+Scraping can take minutes, so the build streams over SSE, which also powers the reveal animation.
 
 ```
-POST /api/jobs            { "username": "shane" }  ->  { "job_id": "..." }
-GET  /api/jobs/{id}/stream  (Server-Sent Events)
+GET /api/graph/{username}/stream   (Server-Sent Events; ?refresh=true to rebuild)
+GET /api/graph/{username}          (the same payload, synchronous; cache hit / no-WebGL fallback)
 ```
+> **Phase 4 (implemented):** a single **GET SSE** stream replaces the original `POST /api/jobs` +
+> `GET /api/jobs/{id}/stream` sketch — the browser consumes it with `fetch` + `ReadableStream`
+> (abortable, no auto-reconnect), so no job id / registry is needed (the Redis cache dedupes repeat
+> builds). A cache hit emits `result` immediately. See DECISIONS.
 
-**SSE events** (drive the four acts):
+**SSE events** (drive the four-act reveal):
 ```
 event: phase
-data: {"phase":"scraping","progress":0.4,"detail":"312 / 780 films"}
+data: {"phase":"scraping","progress":1.0,"detail":"218 films"}
+
+event: nodes        // the poster cascade — a batch of enriched watched films as they resolve
+data: {"nodes":[{"id":"tmdb:27205","title":"Inception","year":2010,
+                 "poster_url":"…","rating":4.5}], "progress":0.34}
 
 event: phase
-data: {"phase":"enriching","progress":0.7}
-
-event: phase
-data: {"phase":"embedding"}
-
-event: phase
-data: {"phase":"scoring"}
+data: {"phase":"scoring"}     // then "embedding"
 
 event: result
 data: { ...graph payload below... }
+
+event: error        // domain errors arrive here (the SSE itself is already 200)
+data: {"status":403,"detail":"This profile is private — only public diaries can be mapped."}
 ```
 
 **Graph payload** (final `result` event; also what a cache hit returns directly):
@@ -216,13 +221,20 @@ Notes: `id` is a stable `tmdb:{id}` string. Recommended nodes carry `score`; wat
 - **Cluster layer** — soft hulls/labels behind posters (low opacity).
 - Reach for **PixiJS** only if the crystallization tween needs more art-directed control than deck.gl transitions give.
 
-### 6.3 The four-act choreography
-1. **Scrape** — posters fade/stream in at random positions while `phase:scraping` progress ticks.
-2. **Enrich** — posters jitter into a loose cloud; subtle depth/parallax.
-3. **Embed (crystallization)** — animate each poster from cloud position → final UMAP `(x,y)` with eased, staggered transitions; clusters visibly form. Hold a half-second beat.
-4. **Score** — recommended posters ignite at cluster centers; explanation edges draw outward to their seed films.
+### 6.3 The four-act choreography (Phase 4 — implemented, `RevealStream.tsx`)
+The reveal is driven by the real SSE build, not a timer. A live **phase intro** (Reading the diary →
+Enriching films → Scoring your taste → Mapping the constellation) sits over the canvas while:
+1. **Scrape** — the phase intro lights "Reading the diary"; no posters yet (we don't know the films).
+2. **Enrich** — each watched film streams in as a `nodes` event and its **real poster cascades** into a
+   scattered cloud (one component owns positions, so this carries straight into the crystallization).
+3. **Embed (crystallization)** — on `result`, the displayed films (recs + their `because` seeds) animate
+   from their cloud spot → final UMAP `(x,y)` (eased ~1.5s); recs settle in with their amber ring; the
+   watched films that didn't make the map fade out.
+4. **Hand off** — the crystallized map **recedes** (blurs) into the glass background and the
+   recommendations console rises (see the Phase 3.6/3.7 note above).
 
-Respect `prefers-reduced-motion`: skip straight to the settled constellation.
+Cache hit / `prefers-reduced-motion` → skip the cascade, settle straight to the map. No-WebGL → a
+phase-aware spinner, then the glass console.
 
 ### 6.4 Interaction model (the explorable map)
 - **Hover/tap a node** → highlight it + its neighbors; dim the rest; show title/year/rating-or-score.

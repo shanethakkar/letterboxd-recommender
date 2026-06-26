@@ -4,7 +4,8 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ApiError, fetchGraph } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import { streamGraph, type CascadeNode, type Phase, type PhaseEvent } from "@/lib/stream";
 import type { GraphNode, GraphPayload } from "@/lib/types";
 import { hasWebGL } from "@/lib/webgl";
 import DetailPanel from "./DetailPanel";
@@ -14,6 +15,7 @@ import RecommendationsConsole from "./RecommendationsConsole";
 import RecRail from "./RecRail";
 
 const Constellation = dynamic(() => import("./Constellation"), { ssr: false });
+const RevealStream = dynamic(() => import("./RevealStream"), { ssr: false });
 
 const ALL_VISIBLE: FilterState = {
   showWatched: true,
@@ -22,11 +24,17 @@ const ALL_VISIBLE: FilterState = {
   genre: null,
 };
 
-// reveal → (recede) → glass ↔ explore
+// reveal (live cascade → crystallize) → glass ↔ explore
 type Mode = "reveal" | "glass" | "explore";
 
-const REVEAL_MS = 2800; // crystallize, then hand off to the glass console
-const RECEDE_MS = 900; // the live canvas blurs out, then unmounts (matches .constellation-recede)
+const RECEDE_MS = 900; // matches .constellation-recede
+
+const PHASE_STEPS: { key: Phase; label: string }[] = [
+  { key: "scraping", label: "Reading the diary" },
+  { key: "enriching", label: "Enriching films" },
+  { key: "scoring", label: "Scoring your taste" },
+  { key: "embedding", label: "Mapping the constellation" },
+];
 
 function reducedMotion() {
   return (
@@ -39,7 +47,9 @@ export default function ConstellationView({ username }: { username: string }) {
   const [payload, setPayload] = useState<GraphPayload | null>(null);
   const [error, setError] = useState<{ status: number; message: string } | null>(null);
   const [mode, setMode] = useState<Mode>("reveal");
-  const [recedeCanvas, setRecedeCanvas] = useState(false); // live canvas still mounted, blurring out
+  const [recedeCanvas, setRecedeCanvas] = useState(false);
+  const [phase, setPhase] = useState<PhaseEvent | null>(null);
+  const [cloud, setCloud] = useState<CascadeNode[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(ALL_VISIBLE);
@@ -48,33 +58,36 @@ export default function ConstellationView({ username }: { username: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client capability probe
   useEffect(() => setWebgl(hasWebGL()), []);
 
+  // Stream the build: phases + the poster cascade arrive live; the payload resolves at the end.
   useEffect(() => {
-    let cancelled = false;
-    fetchGraph(username)
-      .then((p) => !cancelled && setPayload(p))
-      .catch(
-        (e) =>
-          !cancelled &&
-          setError({ status: e instanceof ApiError ? e.status : 0, message: String(e.message) }),
-      );
-    return () => {
-      cancelled = true;
-    };
+    const ctrl = new AbortController();
+    streamGraph(username, {
+      signal: ctrl.signal,
+      onPhase: setPhase,
+      onNodes: (nodes) => setCloud((c) => [...c, ...nodes]),
+    })
+      .then(setPayload)
+      .catch((e) => {
+        if ((e as Error).name === "AbortError") return;
+        setError({
+          status: e instanceof ApiError ? e.status : 0,
+          message: String((e as Error).message),
+        });
+      });
+    return () => ctrl.abort();
   }, [username]);
 
-  // Reveal → glass: the crystallized map recedes (blurs out) while the glass console
-  // rises over it; once the recede finishes we unmount the WebGL canvas so the steady
-  // state is just the cheap static bokeh + glass (no live WebGL behind backdrop-filter).
+  // Once the map crystallizes, recede it and hand off to the glass console.
   const handoff = useCallback(() => {
     setMode("glass");
-    if (reducedMotion()) return; // no recede; the reveal canvas simply isn't rendered in glass
+    if (reducedMotion()) return;
     setRecedeCanvas(true);
     window.setTimeout(() => setRecedeCanvas(false), RECEDE_MS);
   }, []);
 
   useEffect(() => {
     if (!payload || mode !== "reveal" || !webgl) return;
-    const t = setTimeout(handoff, reducedMotion() ? 500 : REVEAL_MS);
+    const t = setTimeout(handoff, reducedMotion() ? 400 : 2400); // let the crystallization play
     return () => clearTimeout(t);
   }, [payload, mode, webgl, handoff]);
 
@@ -91,8 +104,6 @@ export default function ConstellationView({ username }: { username: string }) {
     [payload],
   );
 
-  // Recs come first in the node list, so this is recs-then-seeds — the brightest
-  // posters land in the bokeh field.
   const posters = useMemo(
     () => (payload?.nodes ?? []).map((n) => n.poster_url).filter((u): u is string => !!u),
     [payload],
@@ -110,11 +121,10 @@ export default function ConstellationView({ username }: { username: string }) {
   }, []);
 
   if (error) return <ErrorScreen username={username} error={error} />;
-  if (!payload) return <LoadingScreen username={username} />;
 
-  // No WebGL: skip the reveal entirely — straight to the glass console (pure CSS,
-  // so it still looks the part), with no "explore" option.
+  // No WebGL: skip the cascade reveal — a phase-aware spinner, then straight to the glass console.
   if (!webgl) {
+    if (!payload) return <LoadingScreen username={username} phase={phase} />;
     return (
       <main className="atmosphere relative min-h-screen overflow-hidden">
         <RecommendationsConsole payload={payload} canExplore={false} onExplore={() => {}} />
@@ -127,22 +137,21 @@ export default function ConstellationView({ username }: { username: string }) {
   const selectedNode = selectedId ? nodeById.get(selectedId) ?? null : null;
   const selectedRec =
     selectedNode?.type === "recommended"
-      ? payload.recommendations.find((r) => r.id === selectedId) ?? null
+      ? payload?.recommendations.find((r) => r.id === selectedId) ?? null
       : null;
 
-  // Glass scrolls (the console is tall); reveal/explore are fixed full-screen.
   const mainClass =
     mode === "glass"
       ? "atmosphere relative min-h-screen overflow-x-hidden"
-      : `atmosphere relative h-screen w-screen overflow-hidden${mode === "reveal" ? " cursor-pointer" : ""}`;
+      : "atmosphere relative h-screen w-screen overflow-hidden";
 
   return (
-    <main className={mainClass} onClick={mode === "reveal" ? handoff : undefined}>
-      {/* Receded constellation (the glass background) — present once we hand off. */}
+    <main className={mainClass}>
+      {/* Receded constellation (glass background) — present once we hand off. */}
       {mode === "glass" && <GlassBackground key="glass-bg" posters={posters} />}
 
-      {/* The crystallizing canvas: full-screen in reveal, then blurs out as it recedes.
-          Same element across reveal→recede (keyed) so it never remounts/re-crystallizes. */}
+      {/* The live reveal: posters cascade in during the build, then crystallize. Same element
+          across reveal→recede (keyed) so it never remounts. */}
       {showRevealCanvas && (
         <div
           key="reveal-canvas"
@@ -150,19 +159,15 @@ export default function ConstellationView({ username }: { username: string }) {
             mode === "glass" && recedeCanvas ? "constellation-recede" : ""
           }`}
         >
-          <Constellation
-            payload={payload}
-            animate
-            selectedId={null}
-            onSelect={() => {}}
-            focusId={null}
-            visible={() => true}
-          />
+          <RevealStream cloud={cloud} payload={payload} reducedMotion={reducedMotion()} />
         </div>
       )}
 
+      {/* Live pipeline intro. */}
+      {mode === "reveal" && <PhaseIntro phase={phase} crystallizing={!!payload} />}
+
       {/* The recommendations, on glass. */}
-      {mode === "glass" && (
+      {mode === "glass" && payload && (
         <RecommendationsConsole
           key="console"
           payload={payload}
@@ -171,21 +176,8 @@ export default function ConstellationView({ username }: { username: string }) {
         />
       )}
 
-      {/* Reveal caption. */}
-      {mode === "reveal" && (
-        <div
-          key="caption"
-          className="pointer-events-none absolute inset-x-0 bottom-10 z-20 text-center"
-        >
-          <p className="font-mono text-[11px] uppercase tracking-[0.35em] text-dim">
-            crystallising your taste
-          </p>
-          <p className="mt-2 font-mono text-[10px] text-dim/60">tap to skip</p>
-        </div>
-      )}
-
       {/* Explore: the live, interactive map brought forward. */}
-      {mode === "explore" && (
+      {mode === "explore" && payload && (
         <div key="explore" className="absolute inset-0">
           <Constellation
             payload={payload}
@@ -224,6 +216,44 @@ export default function ConstellationView({ username }: { username: string }) {
   );
 }
 
+function PhaseIntro({ phase, crystallizing }: { phase: PhaseEvent | null; crystallizing: boolean }) {
+  const activeIdx = phase ? PHASE_STEPS.findIndex((s) => s.key === phase.phase) : 0;
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-10 z-20 flex flex-col items-center gap-3">
+      <ul className="flex flex-col gap-1.5 rounded-2xl border border-white/10 bg-void/55 px-5 py-4 backdrop-blur-md">
+        {PHASE_STEPS.map((s, i) => {
+          const done = crystallizing || i < activeIdx;
+          const active = !crystallizing && i === activeIdx;
+          return (
+            <li key={s.key} className="flex items-center gap-3 font-mono text-[11px]">
+              <span
+                className={
+                  done ? "text-beam" : active ? "text-leader" : "text-dim/50"
+                }
+              >
+                {done ? "✓" : active ? "◆" : "○"}
+              </span>
+              <span
+                className={
+                  done ? "text-dim" : active ? "text-leader" : "text-dim/50"
+                }
+              >
+                {s.label}
+              </span>
+              {active && phase?.detail && (
+                <span className="text-dim">· {phase.detail}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-dim">
+        {crystallizing ? "crystallising your taste" : "watching it think"}
+      </p>
+    </div>
+  );
+}
+
 function ExploreHeader({ payload, onBack }: { payload: GraphPayload; onBack: () => void }) {
   return (
     <header className="pointer-events-auto absolute left-4 top-4 z-30 flex items-center gap-4">
@@ -259,7 +289,10 @@ function Legend() {
   );
 }
 
-function LoadingScreen({ username }: { username: string }) {
+function LoadingScreen({ username, phase }: { username: string; phase: PhaseEvent | null }) {
+  const label = phase
+    ? PHASE_STEPS.find((s) => s.key === phase.phase)?.label ?? "Mapping"
+    : "Mapping";
   return (
     <main
       aria-live="polite"
@@ -270,10 +303,12 @@ function LoadingScreen({ username }: { username: string }) {
         aria-hidden
         className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-beam"
       />
-      <p className="font-display text-lg text-leader">Mapping @{username}…</p>
+      <p className="font-display text-lg text-leader">
+        {label} @{username}…
+      </p>
       <p className="max-w-sm font-mono text-xs text-dim">
-        Reading the diary, enriching films, scoring taste. A first map can take a couple of
-        minutes; after that it&apos;s instant.
+        {phase?.detail ? `${phase.detail} · ` : ""}A first map can take a couple of minutes; after
+        that it&apos;s instant.
       </p>
     </main>
   );

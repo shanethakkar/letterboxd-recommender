@@ -304,3 +304,38 @@ nearest-neighbour floor is robust to the feature space being sparse (a fixed abs
 labels on top + pill, lighter title pills). Required a backend restart + cache rebuild (`?refresh=true`).
 Verified via Playwright: connected web with smaller dots + readable region labels, hover-poster + zoom labels
 intact — zero page errors; backend ruff + 44 tests, frontend tsc + lint + build all clean.
+
+## 2026-06-26 — Phase 4: streamed build — real posters cascade in, then crystallize (SSE)
+**Decision:** Turn the multi-minute cold build into a "watch it think" experience bound to real progress.
+The build now streams over SSE; the user's **actual film posters cascade in** during enrichment, then
+**crystallize** into the constellation when the layout is ready. Concretely:
+- **`GET /api/graph/{username}/stream`** (single GET SSE via `sse-starlette`), **not** the SPEC's original
+  `POST /api/jobs` + `GET /api/jobs/{id}/stream`. The browser consumes it with `fetch` + `ReadableStream`
+  (abortable, **no** auto-reconnect — a reconnect would restart the build), so there's no job id and no
+  multi-subscriber registry: the Redis cache already dedupes repeat builds (**KISS**). A cache hit emits
+  `result` immediately.
+- Events: `phase` (scraping→enriching→scoring→embedding) · `nodes` (a batch of enriched watched films as
+  they resolve — the cascade source) · `result` (full payload) · `error` (domain errors; the SSE is 200).
+- `build_graph` gained an optional async `emit` callback (default `None` = the byte-for-byte synchronous
+  build). Watched enrichment is now **incremental** (`tmdb.stream_movies`, `asyncio.as_completed`) so
+  posters stream as they resolve; the CPU-bound embed block runs in **`asyncio.to_thread`** so queued
+  events actually flush while UMAP runs.
+- Frontend: `RevealStream.tsx` owns sprite positions across cascade→crystallize for continuity (cloud →
+  final UMAP coords in one zoom-0 view; recs settle in, non-displayed watched fade out). A live **phase
+  intro** overlay replaces the spinner.
+**Why:** The wait *is* the product moment — seeing your own diary stream in and resolve into a taste map
+is the payoff. Single-GET-SSE is the least machinery that delivers it; the cache makes a registry
+unnecessary.
+**Gotcha fixed:** `sse-starlette` emits **CRLF** (`\r\n`) line endings; the first SSE parser split on
+`\n\n` and silently never matched a boundary → "stream ended before ready." Parser is now CRLF-robust
+(`/\r\n\r\n|\n\n|\r\r/`). Confirmed at the byte level (`event: result\r\n…`).
+**Affects:** `backend/`: new `jobs.py` (`stream_build`), `graph.py` (`emit` + incremental enrich +
+`to_thread`), `tmdb.py` (`stream_movies`), `app.py` (stream endpoint), `requirements.txt` (`sse-starlette`).
+`frontend/`: new `lib/stream.ts` + `components/RevealStream.tsx` + `lib/poster.ts`, rewired
+`ConstellationView.tsx` (stream + phase intro). 46 backend tests (2 new stream tests) pass; frontend tsc +
+lint + build clean. Verified via Playwright on a real cold build: posters cascade (~150 in the cloud) →
+crystallize → recede → glass → explore, zero page errors.
+**Known dev-only quirk:** React StrictMode double-invokes the effect, starting two builds (the first is
+aborted, which cancels its server-side task). Production (no StrictMode) starts one. Not worth dedup yet.
+**Still later (Phase 5):** multi-subscriber registry / cross-tab dedupe; streaming candidate-pool posters;
+finer scrape progress; deploy.

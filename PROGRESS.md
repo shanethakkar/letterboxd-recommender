@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-06-26 · Phase 3.8 (dots constellation) complete — next is Phase 4 (SSE + four-act pipeline animation)_
+_Last updated: 2026-06-26 · Phase 4 (streamed cascade reveal) complete — next is Phase 5 (polish + deploy)_
 
 ## Phase 0 — Backend skeleton
 - [x] Project scaffolding: `.gitignore`, `.env` (+ `.env.example`), `CLAUDE.md`, `PROGRESS.md`, `DECISIONS.md`
@@ -175,8 +175,22 @@ _Last updated: 2026-06-26 · Phase 3.8 (dots constellation) complete — next is
     cut kNN pairs at an absolute `threshold=0.15` (these sparse vectors are near-orthogonal). Added a
     **nearest-neighbour floor** + `threshold→0.08` → **260 edges, 0 isolated nodes**. Backend restart + cache
     rebuild; 44 tests pass; verified the connected web via Playwright.
-- Next: Phase 4 — async job + SSE; stream the reveal during the *real* build (posters cascade in →
-  crystallize → recede), bind the four-act animation to live phase events.
+- [x] **Phase 4 — streamed build: real posters cascade in, then crystallize (SSE)**
+  - Single **`GET /api/graph/{username}/stream`** (SSE via `sse-starlette`) streams `phase` →
+    `nodes` (the poster cascade) → `result`/`error`. `build_graph` gained an async `emit` callback
+    (default `None` = unchanged synchronous build); watched enrichment is now incremental
+    (`tmdb.stream_movies` + `asyncio.as_completed`) and the embed block runs in `asyncio.to_thread`.
+    New `jobs.py` (`stream_build`). No job registry — the Redis cache dedupes (KISS).
+  - Frontend: `lib/stream.ts` (fetch + ReadableStream, **CRLF-robust** parser), `RevealStream.tsx`
+    (owns positions cloud→crystallize for continuity; non-displayed watched fade out), a live **phase
+    intro** overlay. `lib/poster.ts` shares `thumb()`.
+  - **Bug fixed:** `sse-starlette` emits `\r\n`; the first parser split on `\n\n` → never matched →
+    "stream ended before ready." Now handles `\r\n\r\n`.
+  - Verified (Playwright, real cold build ~90s): ~150 posters cascade into the cloud → crystallize →
+    recede → glass → explore, **zero page errors**. 46 backend tests (2 new) pass; tsc + lint + build clean.
+- Next: Phase 5 — polish + deploy (mobile/touch, keyboard a11y, share links, landing demo loop;
+  ship backend on Render/Railway/Fly + frontend on Vercel). Optional: stream candidate-pool posters,
+  cross-tab build dedupe.
 
 ## Phase 3 retro (what I learned)
 - The installed skills paid off here: `frontend-design` shaped the cinematic monochrome shell,
@@ -196,8 +210,17 @@ _Last updated: 2026-06-26 · Phase 3.8 (dots constellation) complete — next is
 - Honoured the perf guardrail by construction: the steady-state background is static `<img>`s, so
   `backdrop-filter` never samples a live WebGL canvas.
 
-## Phase 4 — SSE + pipeline intro
-- [ ] Job endpoint + SSE; four-act animation; crystallization tween
+## Phase 4 retro (what I learned)
+- The expensive bug was a **CRLF assumption**: `sse-starlette` emits `\r\n`, my parser split on `\n\n`,
+  so it silently matched nothing and looked like the stream "ended early." Lesson: when an SSE/stream
+  "ends without data," check the byte-level framing (`xxd`) before suspecting timeouts or the backend.
+- **`asyncio.to_thread` is the unlock** for streaming a CPU-bound pipeline — without it, UMAP/sklearn
+  block the loop and every queued event arrives batched at the end (no live feel).
+- Honest scoping beat literalism: we can't cascade posters during *scraping* (we don't know the films
+  yet), so the cascade rides **enrichment** (where poster URLs first exist). One component owning
+  positions cloud→crystallize is what makes it feel continuous rather than a swap.
+- Keeping `emit=None` as the default meant the whole synchronous path + 44 existing tests were untouched;
+  the stream is purely additive.
 
 ## Phase 5 — Polish + deploy
 - [ ] Mobile tuning, reduced-motion, error states, share links; deploy
