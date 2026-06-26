@@ -201,16 +201,18 @@ export default function Constellation({
     getPosition: { duration: willAnimate ? CRYSTALLIZE_MS : 0, easing: easeOut },
   };
 
-  // Amber ring marking every recommendation (the stars) — shared by both variants.
+  // Amber ring marking every recommendation (the stars) — shared by both variants, but
+  // tight + small in dots mode (the rings were the main "recs too big" offender).
+  const ringMul = variant === "dots" ? 0.3 : 0.62;
   const recRings = new ScatterplotLayer<GraphNode>({
     id: "rec-rings",
     data: recs,
     getPosition: pos,
-    getRadius: (n) => sizeOf(n) * 0.62 * bump(n),
+    getRadius: (n) => sizeOf(n) * ringMul * bump(n),
     radiusUnits: "common",
     radiusScale: worldScale,
-    radiusMinPixels: 9,
-    radiusMaxPixels: 210,
+    radiusMinPixels: variant === "dots" ? 5 : 9,
+    radiusMaxPixels: variant === "dots" ? 46 : 210,
     filled: false,
     stroked: true,
     getLineColor: (n) => [...BEAM, n.id === selectedId ? 235 : isLit(n.id) ? 150 : 60],
@@ -240,46 +242,46 @@ export default function Constellation({
     if (hoveredNode) labelMap.set(hoveredNode.id, hoveredNode);
 
     layers.push(
-      // soft amber glow under each recommendation — subtle, so dense recs don't haze
+      // soft amber glow under each recommendation — a faint whisper, not a haze
       new ScatterplotLayer<GraphNode>({
         id: "rec-glow",
         data: recs,
         getPosition: pos,
-        getRadius: (n) => sizeOf(n) * 0.85 * bump(n),
+        getRadius: (n) => sizeOf(n) * 0.42 * bump(n),
         radiusUnits: "common",
         radiusScale: worldScale,
-        radiusMinPixels: 8,
-        radiusMaxPixels: 60,
-        getFillColor: (n) => [...BEAM, isLit(n.id) ? 16 : 6],
+        radiusMinPixels: 4,
+        radiusMaxPixels: 22,
+        getFillColor: (n) => [...BEAM, isLit(n.id) ? 14 : 5],
         updateTriggers: { getRadius: [hovered], getFillColor: [active] },
         pickable: false,
       }),
-      // seed films — small cluster-coloured dots (the body of the constellation)
+      // seed films — tiny cluster-coloured points (the body of the constellation)
       new ScatterplotLayer<GraphNode>({
         id: "seed-dots",
         data: seeds,
         getPosition: pos,
-        getRadius: (n) => sizeOf(n) * 0.24 * bump(n),
+        getRadius: (n) => sizeOf(n) * 0.14 * bump(n),
         radiusUnits: "common",
         radiusScale: worldScale,
-        radiusMinPixels: 2,
-        radiusMaxPixels: 18,
-        getFillColor: (n) => [...clusterColor(n.cluster), isLit(n.id) ? 210 : 60],
+        radiusMinPixels: 1.5,
+        radiusMaxPixels: 8,
+        getFillColor: (n) => [...clusterColor(n.cluster), isLit(n.id) ? 215 : 60],
         updateTriggers: { getRadius: [hovered], getFillColor: [active] },
         pickable: true,
         onHover: (info) => setHovered((info.object as GraphNode | null)?.id ?? null),
         onClick: (info) => onSelect((info.object as GraphNode | null)?.id ?? null),
       }),
-      // recommendations — bigger, brighter cluster-coloured dots inside the amber ring
+      // recommendations — small cluster-coloured dots inside the amber ring
       new ScatterplotLayer<GraphNode>({
         id: "rec-dots",
         data: recs,
         getPosition: pos,
-        getRadius: (n) => sizeOf(n) * 0.36 * bump(n),
+        getRadius: (n) => sizeOf(n) * 0.18 * bump(n),
         radiusUnits: "common",
         radiusScale: worldScale,
-        radiusMinPixels: 3.5,
-        radiusMaxPixels: 34,
+        radiusMinPixels: 2.5,
+        radiusMaxPixels: 13,
         getFillColor: (n) => [...clusterColor(n.cluster), isLit(n.id) ? 255 : 150],
         updateTriggers: { getRadius: [hovered], getFillColor: [active] },
         pickable: true,
@@ -316,8 +318,8 @@ export default function Constellation({
         fontFamily: "monospace",
         characterSet: "auto",
         background: true,
-        getBackgroundColor: [8, 9, 11, 175],
-        backgroundPadding: [6, 3, 6, 3],
+        getBackgroundColor: [8, 9, 11, 140],
+        backgroundPadding: [5, 2, 5, 2],
         updateTriggers: { getColor: [active], getText: [zoomedIn] },
         pickable: false,
       }),
@@ -371,34 +373,22 @@ export default function Constellation({
       ? rec.because.filter((b) => visibleIds.has(b.id)).map((b) => ({ from: rec.id, to: b.id, w: b.contribution }))
       : [];
     const labelled = payload.clusters.filter((c) => c.label);
-    // Posters used to smother the edges + cluster labels; in dots mode turn them up so
-    // the structure they describe is actually visible.
-    const edgeBase = variant === "dots" ? 18 : 7;
+    const dots = variant === "dots";
+    // Posters used to smother the edges; in dots mode they carry the structure, so turn
+    // them up. At rest (nothing active) every edge is "lit"; once a node is active its
+    // edges stay bright and the rest dim, so focus still works.
+    const dimAlpha = dots ? 20 : 7;
+    const edgeAlpha = (lit: boolean, w: number) =>
+      lit ? Math.min(210, (dots ? 52 : 24) + w * (dots ? 150 : 110)) : dimAlpha;
 
     layers.push(
-      new TextLayer<Cluster>({
-        id: "cluster-labels",
-        data: labelled,
-        getPosition: (c) => c.centroid,
-        getText: (c) => (c.label ?? "").toUpperCase(),
-        getSize: variant === "dots" ? 13 : 12,
-        sizeUnits: "pixels",
-        getColor: [...LEADER, variant === "dots" ? 95 : 55],
-        fontFamily: "monospace",
-        getTextAnchor: "middle",
-        characterSet: "auto",
-        pickable: false,
-      }),
       new LineLayer<(typeof simEdges)[number]>({
         id: "edges",
         data: simEdges,
         getSourcePosition: (e) => posId(e.source),
         getTargetPosition: (e) => posId(e.target),
-        getColor: (e) => [
-          ...LEADER,
-          isLit(e.source) && isLit(e.target) ? 24 + e.weight * 110 : edgeBase,
-        ],
-        getWidth: (e) => 0.5 + e.weight * 1.3,
+        getColor: (e) => [...LEADER, edgeAlpha(isLit(e.source) && isLit(e.target), e.weight)],
+        getWidth: (e) => (dots ? 0.8 : 0.5) + e.weight * (dots ? 1.7 : 1.3),
         widthUnits: "pixels",
         transitions: { getColor: 200 },
         updateTriggers: { getColor: [active] },
@@ -435,6 +425,28 @@ export default function Constellation({
         }),
       );
     }
+
+    // Cluster (taste-region) labels sit ON TOP so dots/titles don't block them, with a
+    // backing pill + bigger caps so they read as region headers, not film titles.
+    layers.push(
+      new TextLayer<Cluster>({
+        id: "cluster-labels",
+        data: labelled,
+        getPosition: (c) => c.centroid,
+        getText: (c) => (c.label ?? "").toUpperCase(),
+        getSize: dots ? 15 : 12,
+        sizeUnits: "pixels",
+        getColor: [...LEADER, dots ? 235 : 55],
+        fontFamily: "monospace",
+        fontWeight: 700,
+        getTextAnchor: "middle",
+        characterSet: "auto",
+        background: dots,
+        getBackgroundColor: [8, 9, 11, 210],
+        backgroundPadding: [7, 4, 7, 4],
+        pickable: false,
+      }),
+    );
   }
 
   return (

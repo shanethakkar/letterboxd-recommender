@@ -169,6 +169,12 @@ _Last updated: 2026-06-26 · Phase 3.8 (dots constellation) complete — next is
     for recs/"why"; shell stays monochrome).
   - Verified (Playwright): visible cluster structure, hover-poster bloom (Uncut Gems), zoom-in reveals all
     titles — zero page errors. tsc + lint + build clean.
+  - **3.8a tuning (user feedback):** shrank dots (rec `0.36→0.18`, seed `0.24→0.14`) + tightened the amber
+    rings (variant-aware `0.62→0.30`); brightened/thickened edges; moved cluster labels **on top** with a
+    backing pill. **Real fix:** the graph was barely connected — **19 edges / 117 nodes**. `similarity_edges`
+    cut kNN pairs at an absolute `threshold=0.15` (these sparse vectors are near-orthogonal). Added a
+    **nearest-neighbour floor** + `threshold→0.08` → **260 edges, 0 isolated nodes**. Backend restart + cache
+    rebuild; 44 tests pass; verified the connected web via Playwright.
 - Next: Phase 4 — async job + SSE; stream the reveal during the *real* build (posters cascade in →
   crystallize → recede), bind the four-act animation to live phase events.
 

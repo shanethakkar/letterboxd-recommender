@@ -89,9 +89,15 @@ def _shared_trait(a: Film, b: Film) -> str:
 
 
 def similarity_edges(
-    matrix: sp.spmatrix, films: list[Film], *, k: int = 6, threshold: float = 0.15
+    matrix: sp.spmatrix, films: list[Film], *, k: int = 6, threshold: float = 0.08
 ) -> list[Edge]:
-    """kNN-cosine edges above `threshold`, deduped undirected, tagged with shared trait."""
+    """kNN-cosine edges, deduped undirected, tagged with shared trait.
+
+    Each node always keeps its single nearest neighbour (so the constellation is connected —
+    no orphan dots), plus any other neighbours scoring above `threshold`. These sparse TF-IDF
+    vectors are near-orthogonal, so a high absolute threshold leaves almost nothing connected;
+    the nearest-neighbour floor guarantees a legible web regardless.
+    """
     n = matrix.shape[0]
     if n < 2:
         return []
@@ -102,12 +108,15 @@ def similarity_edges(
     seen: set[tuple[int, int]] = set()
     edges: list[Edge] = []
     for i in range(n):
+        kept_nearest = False
         for pos in range(kk):
             j = int(indices[i][pos])
             if j == i:  # skip self (not always at pos 0 when vectors tie)
                 continue
             sim = 1.0 - float(distances[i][pos])
-            if sim < threshold:
+            is_nearest = not kept_nearest  # the closest non-self neighbour
+            kept_nearest = True
+            if sim < threshold and not is_nearest:
                 continue
             a, b = sorted((i, j))
             if (a, b) in seen:

@@ -285,3 +285,22 @@ hover for the poster"). Reveal still uses `variant="posters"`. Verified via Play
 visible cluster structure, hover blooms the poster, zoom-in reveals all titles — zero page errors; tsc + lint
 + build clean. **Easy follow-ups if wanted:** cluster-colour swatches in the genre/cluster Filters; tuning ring
 density; making the reveal dots too (currently kept as posters for the wow).
+
+## 2026-06-26 — Phase 3.8a: dots tuning + the real edge fix (constellation was barely connected)
+**Decision:** Acting on user feedback that the dots map was "still cluttered… lines very hard to see… cluster
+labels blocked": (1) **shrank the dots** — rec dots `0.36→0.18`, seed dots `0.24→0.14`, and the amber rec
+**rings are now variant-aware** (`0.62→0.30`, max px `210→46`) so recs are small stars, not big circles;
+(2) **brightened/thickened edges** in dots mode (at-rest alpha `~24+w·110 → 52+w·150`); (3) moved the
+**cluster labels to render on top** with a dark backing pill + bigger bold caps so dots/titles can't block
+them, and lightened the film-title pills. **But the real cause of "hard to see how things connect" was the
+data:** the graph had only **19 edges for 117 nodes**. `similarity_edges` filtered kNN pairs at an absolute
+`threshold=0.15`, and these sparse TF-IDF vectors are near-orthogonal, so almost everything was cut. Fixed by
+**always keeping each node's single nearest neighbour** (guarantees a connected web, no orphan dots) plus a
+lowered `threshold=0.08` for the rest → **260 edges, 0 isolated nodes**.
+**Why:** Small dots + a genuinely connected, visible web is what makes it read as a constellation; the
+nearest-neighbour floor is robust to the feature space being sparse (a fixed absolute threshold is not).
+**Affects:** `backend/projection.py` (`similarity_edges`: nearest-neighbour floor + `threshold 0.15→0.08`;
+44 tests still pass), `frontend/components/Constellation.tsx` (dot/ring/glow sizes, edge alpha/width, cluster
+labels on top + pill, lighter title pills). Required a backend restart + cache rebuild (`?refresh=true`).
+Verified via Playwright: connected web with smaller dots + readable region labels, hover-poster + zoom labels
+intact — zero page errors; backend ruff + 44 tests, frontend tsc + lint + build all clean.
