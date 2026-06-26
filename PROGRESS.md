@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (projection + payload)_
+_Last updated: 2026-06-25 · Current phase: 2 complete — next is Phase 3 (static constellation, Next.js + deck.gl)_
 
 ## Phase 0 — Backend skeleton
 - [x] Project scaffolding: `.gitignore`, `.env` (+ `.env.example`), `CLAUDE.md`, `PROGRESS.md`, `DECISIONS.md`
@@ -102,8 +102,19 @@ _Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (proj
 - Cosine scores sit in a modest absolute range (~0.23–0.35) — fine for ranking; may rescale for
   display in the UI later.
 
-## Phase 2 — Projection + payload
-- [ ] UMAP coords, clusters, edges; full graph payload serialized + eyeballed
+## Phase 2 — Projection + payload — COMPLETE
+- [x] `projection.py` — UMAP (cosine) 2D coords (server-side), KMeans clustering, lift-based
+      distinctive genre labels, kNN similarity edges (deduped, shared-trait tagged).
+- [x] `graph.py` `build_graph` — assembles the full SPEC §5 payload (nodes/edges/recommendations/
+      clusters/stats), cached `rec:{username}` 24h; `models.py` has the §5 contract models.
+- [x] `validate_graph.py` — serialize + eyeball JSON. 41 tests pass, ruff clean.
+- [x] **Eyeballed @sthakkar**: 267 nodes (217 watched + 50 rec), **7 legible clusters**
+      (mystery·crime, western·history, horror·thriller, romance·comedy, action·science fiction,
+      animation·family, fantasy·adventure), 142 edges, cache hit on 2nd build.
+  - Findings: project the *displayed set* not the 3000-pool; KMeans beats HDBSCAN here (concentrated
+    taste → one mega-blob); lift-based labels avoid "drama" everywhere. See DECISIONS.
+- Next: Phase 3 — Next.js + deck.gl renders the settled map from the payload (posters, edges, hover,
+  detail panel, filters). The static constellation is the real core; ship it standalone.
 
 ## Phase 3 — Static constellation
 - [ ] Next.js + deck.gl renders the settled map (posters, edges, hover, panel, filters)

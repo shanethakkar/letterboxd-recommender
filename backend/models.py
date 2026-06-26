@@ -97,6 +97,60 @@ class Recommendation(BaseModel):
     shared_traits: list[str] = Field(default_factory=list)
 
 
+class Node(BaseModel):
+    """A film in the constellation (SPEC §5). Watched nodes carry `rating`; recommended `score`."""
+
+    id: str  # "tmdb:{id}"
+    type: str  # "watched" | "recommended"
+    title: str
+    year: int | None = None
+    poster_url: str | None = None
+    x: float  # UMAP coord
+    y: float
+    cluster: int
+    rating: float | None = None
+    score: float | None = None
+    genres: list[str] = Field(default_factory=list)
+    director: str | None = None
+
+
+class Edge(BaseModel):
+    """A similarity edge between two nodes (SPEC §5)."""
+
+    source: str  # "tmdb:{id}"
+    target: str
+    weight: float
+    shared: str  # "director" | "genre" | "keyword" | "cast"
+
+
+class Cluster(BaseModel):
+    """A taste cluster (SPEC §5)."""
+
+    id: int
+    label: str | None = None
+    centroid: list[float]  # [x, y]
+
+
+class Stats(BaseModel):
+    """Headline profile stats (SPEC §5)."""
+
+    rated: int
+    avg_rating: float
+    clusters: int
+
+
+class GraphPayload(BaseModel):
+    """The full graph payload — the backend↔frontend contract (SPEC §5)."""
+
+    username: str
+    generated_at: str
+    stats: Stats
+    nodes: list[Node] = Field(default_factory=list)
+    edges: list[Edge] = Field(default_factory=list)
+    recommendations: list[Recommendation] = Field(default_factory=list)
+    clusters: list[Cluster] = Field(default_factory=list)
+
+
 class Health(BaseModel):
     """Response model for the `/health` endpoint."""
 

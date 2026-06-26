@@ -1,5 +1,4 @@
 # Constellation backend dependencies.
-# umap-learn (projection) is added in Phase 2.
 
 fastapi
 uvicorn[standard]
@@ -13,6 +12,10 @@ pydantic-settings
 letterboxdpy
 scikit-learn
 numpy
+
+# Phase 2 — projection
+umap-learn
+numba>=0.60  # pin a Python 3.12-compatible numba (umap-learn's dep; uv otherwise picks an ancient one)
 
 # Dev / test
 pytest

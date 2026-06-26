@@ -139,3 +139,19 @@ collaborative filtering is the only bigger lever (deferred, large lift).
 **Affects:** SPEC §4.2 (3 sources, cap, caching) + §4.7 (result); `backend/tmdb.py`
 (`discover_by_genres`, genre map, get_movie cache, cap default), `app.py`/`validate_recommender.py`/
 `evaluate.py` (pass redis to `create_tmdb_client`).
+
+## 2026-06-25 — Phase 2: projection + graph payload (KMeans, distinctive labels, displayed-set)
+**Decision:** `backend/projection.py` (UMAP cosine → 2D, KMeans clustering, lift-based genre labels,
+kNN edges) + `backend/graph.py` (`build_graph` → the SPEC §5 payload, cached `rec:{username}` 24h) +
+`backend/validate_graph.py`. Three refinements of SPEC §4.5, all evidence-driven:
+1. **Project the displayed set** (watched + top-N recs, ~250), not the 3000-film pool (a meaningless cloud).
+2. **KMeans, not HDBSCAN** — HDBSCAN lumped @sthakkar's concentrated crime/thriller taste into one
+   230-node "drama" mega-blob; KMeans gives ~7 legible regions every poster belongs to.
+3. **Lift-based labels** — raw dominant genre made every cluster "drama"; lift (cluster share ÷ global
+   share) surfaces the distinctive genres ("mystery · crime", "western · history").
+**Why:** Phase 2 turns the recommender output into the navigable map data the frontend renders.
+UMAP runs server-side only (guardrail). Validated @sthakkar: 267 nodes (217 watched + 50 rec), 7
+labelled clusters, 142 edges, cache hit on 2nd build; JSON eyeballed.
+**Affects:** SPEC §4.5 (rewritten); new `projection.py`/`graph.py`/`validate_graph.py`; `models.py`
+(Node/Edge/Cluster/Stats/GraphPayload mirroring SPEC §5); `requirements.txt` (umap-learn + numba≥0.60
+pin — uv otherwise resolved a pre-3.12 numba). Edge threshold (0.15) + cluster count are tunable in Phase 3.

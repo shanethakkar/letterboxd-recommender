@@ -91,9 +91,14 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 - **Sparse profiles** (<~8 ratings): shift weight onto the mainstream prior so the map still renders something meaningful and recognizable.
 
 ### 4.5 `projection.py`
-- UMAP (`cosine` metric) fit on the combined watched+candidate feature matrix → 2D coords.
-- Cluster (HDBSCAN or KMeans) for cluster ids; optional auto-labels from dominant genre/keyword (v2: an LLM can name clusters from their members).
-- Edges: kNN on cosine similarity above a threshold; tag each edge's `shared` dimension (director / genre / keyword) — the strongest shared trait.
+- UMAP (`cosine` metric) fit on the feature matrix of the **displayed set** — watched films + the
+  top-N recommendations (not the full ~3000 candidate pool, which would be a meaningless cloud) → 2D coords. **Server-side only.**
+- Cluster with **KMeans** on the 2D coords (every poster belongs to a labelled region; HDBSCAN lumped
+  concentrated tastes into one mega-blob + noise). Auto-label each cluster by its most **distinctive**
+  genres — lift vs. the global mix, so labels read "mystery · crime" / "western · history" rather than
+  the ubiquitous "drama" (v2: an LLM can name clusters).
+- Edges: kNN on cosine similarity above a threshold; deduped undirected; tag each edge's `shared`
+  dimension (director / cast / keyword / genre) — the strongest shared trait.
 
 ### 4.6 `cache.py`
 - Redis. Key `rec:{username}`, value = full graph payload, TTL (e.g. 24h). `?refresh=true` busts it.
