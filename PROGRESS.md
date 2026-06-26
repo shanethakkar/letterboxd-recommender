@@ -137,7 +137,16 @@ _Last updated: 2026-06-25 · Current phase: 3 complete — next is Phase 4 (SSE 
     settle, reduced-motion aware). Applied emil-design-eng + fixing-motion-performance.
   - Verified (Playwright): settled recs-first map, mid-crystallization, rail→fly-to+why-edges, expanded
     list. tsc+lint+build clean; 44 backend tests pass.
-- Next: Phase 4 — async job + SSE; bind the four-act animation (crystallization) to *real* phase events.
+- [x] **Phase 3.6 pivot — recommendations table is the product (user feedback)**
+  - Enriched `Recommendation` payload (genres, director, runtime, poster, IMDb/Meta/RT — already
+    computed, now serialized). New `RecommendationsTable` card-list: sortable (match/IMDb/Meta/year) +
+    genre filter, review badges, **"because you rated…"** in amber, TMDB + Letterboxd links.
+  - Constellation demoted to: crystallization **reveal** on load (auto-hands off to the table ~2.8s) +
+    an opt-in **"Explore the constellation"** mode (back button). `animate` flag; removed grey backing
+    circles. Table is also the no-WebGL fallback (deleted RankedList).
+  - Verified (Playwright): reveal → table → explore. tsc+lint+build clean; 44 backend tests pass.
+- Next: Phase 4 — async job + SSE; stream the reveal during the *real* build (posters cascade in →
+  crystallize), bind the four-act animation to live phase events.
 
 ## Phase 3 retro (what I learned)
 - The installed skills paid off here: `frontend-design` shaped the cinematic monochrome shell,

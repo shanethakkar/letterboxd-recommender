@@ -30,6 +30,7 @@ interface Props {
   onSelect: (id: string | null) => void;
   focusId: string | null;
   visible: (n: GraphNode) => boolean;
+  animate?: boolean; // play the crystallization reveal on mount
 }
 
 function prefersReducedMotion(): boolean {
@@ -63,19 +64,27 @@ function thumb(url: string): string {
   return url.replace("/w185/", "/w154/");
 }
 
-export default function Constellation({ payload, selectedId, onSelect, focusId, visible }: Props) {
+export default function Constellation({
+  payload,
+  selectedId,
+  onSelect,
+  focusId,
+  visible,
+  animate = true,
+}: Props) {
   const reduced = useMemo(() => prefersReducedMotion(), []);
+  const willAnimate = animate && !reduced;
   const [hovered, setHovered] = useState<string | null>(null);
-  const [settled, setSettled] = useState(reduced); // reduced-motion → no fly-in
+  const [settled, setSettled] = useState(!willAnimate); // skip the fly-in when not animating
   const [view, setView] = useState<ViewState>(() => initialView(payload.nodes));
 
   // Crystallize: render the scattered cloud once, then flip to the real layout (deck
   // interpolates getPosition). Double rAF guarantees the cloud frame paints first.
   useEffect(() => {
-    if (reduced) return;
+    if (!willAnimate) return;
     const id = requestAnimationFrame(() => requestAnimationFrame(() => setSettled(true)));
     return () => cancelAnimationFrame(id);
-  }, [reduced]);
+  }, [willAnimate]);
 
   const nodeById = useMemo(() => {
     const m = new Map<string, GraphNode>();
@@ -168,13 +177,15 @@ export default function Constellation({ payload, selectedId, onSelect, focusId, 
   const worldScale = span / 620; // matches the fit zoom in initialView
   const bump = (n: GraphNode) => (n.id === hovered ? 1.7 : 1);
 
-  const posTransition = { getPosition: { duration: reduced ? 0 : CRYSTALLIZE_MS, easing: easeOut } };
+  const posTransition = {
+    getPosition: { duration: willAnimate ? CRYSTALLIZE_MS : 0, easing: easeOut },
+  };
 
   const layers: Layer[] = [
-    // faint backing dot (also catches posterless nodes)
+    // only the rare posterless node gets a dot — no circles beneath the posters
     new ScatterplotLayer<GraphNode>({
       id: "dots",
-      data: nodes,
+      data: nodes.filter((n) => !n.poster_url),
       getPosition: pos,
       getRadius: (n) => sizeOf(n) * 0.5,
       radiusUnits: "common",

@@ -39,6 +39,13 @@ export interface Recommendation {
   score: number;
   because: Because[];
   shared_traits: string[];
+  poster_url: string | null;
+  genres: string[];
+  director: string | null;
+  runtime: number | null;
+  imdb_rating: number | null;
+  metascore: number | null;
+  rotten_tomatoes: number | null;
 }
 
 export interface Cluster {

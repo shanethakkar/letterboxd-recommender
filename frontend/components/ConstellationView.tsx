@@ -9,7 +9,7 @@ import type { GraphNode, GraphPayload } from "@/lib/types";
 import { hasWebGL } from "@/lib/webgl";
 import DetailPanel from "./DetailPanel";
 import Filters, { type FilterState } from "./Filters";
-import RankedList from "./RankedList";
+import RecommendationsTable from "./RecommendationsTable";
 import RecRail from "./RecRail";
 
 const Constellation = dynamic(() => import("./Constellation"), { ssr: false });
@@ -21,9 +21,19 @@ const ALL_VISIBLE: FilterState = {
   genre: null,
 };
 
+type Mode = "reveal" | "table" | "explore";
+
+function reducedMotion() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 export default function ConstellationView({ username }: { username: string }) {
   const [payload, setPayload] = useState<GraphPayload | null>(null);
   const [error, setError] = useState<{ status: number; message: string } | null>(null);
+  const [mode, setMode] = useState<Mode>("reveal");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(ALL_VISIBLE);
@@ -32,8 +42,6 @@ export default function ConstellationView({ username }: { username: string }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client capability probe
   useEffect(() => setWebgl(hasWebGL()), []);
 
-  // The route remounts this component per username (key={username}), so initial state is
-  // already fresh here — the effect only kicks off the async fetch.
   useEffect(() => {
     let cancelled = false;
     fetchGraph(username)
@@ -48,6 +56,14 @@ export default function ConstellationView({ username }: { username: string }) {
     };
   }, [username]);
 
+  // Once the data lands, the constellation crystallizes, then hands off to the table.
+  // (No WebGL → the render below shows the table directly, no reveal.)
+  useEffect(() => {
+    if (!payload || mode !== "reveal" || !webgl) return;
+    const t = setTimeout(() => setMode("table"), reducedMotion() ? 500 : 2800);
+    return () => clearTimeout(t);
+  }, [payload, mode, webgl]);
+
   const visible = useCallback(
     (n: GraphNode) =>
       (n.type === "watched" ? filters.showWatched : filters.showRecommended) &&
@@ -56,10 +72,10 @@ export default function ConstellationView({ username }: { username: string }) {
     [filters],
   );
 
-  const genres = useMemo(() => {
-    if (!payload) return [];
-    return Array.from(new Set(payload.nodes.flatMap((n) => n.genres))).sort();
-  }, [payload]);
+  const genres = useMemo(
+    () => Array.from(new Set((payload?.nodes ?? []).flatMap((n) => n.genres))).sort(),
+    [payload],
+  );
 
   const nodeById = useMemo(() => {
     const m = new Map<string, GraphNode>();
@@ -67,7 +83,6 @@ export default function ConstellationView({ username }: { username: string }) {
     return m;
   }, [payload]);
 
-  // Selecting from the rail both highlights the rec and flies the camera to it.
   const selectFromRail = useCallback((id: string) => {
     setSelectedId(id);
     setFocusId(id);
@@ -75,11 +90,43 @@ export default function ConstellationView({ username }: { username: string }) {
 
   if (error) return <ErrorScreen username={username} error={error} />;
   if (!payload) return <LoadingScreen username={username} />;
-  if (!webgl) return <RankedList payload={payload} />;
 
-  const selectedNode = selectedId
-    ? payload.nodes.find((n) => n.id === selectedId) ?? null
-    : null;
+  if (mode === "table" || !webgl) {
+    return (
+      <RecommendationsTable
+        payload={payload}
+        canExplore={webgl}
+        onExplore={() => setMode("explore")}
+      />
+    );
+  }
+
+  if (mode === "reveal") {
+    return (
+      <main
+        className="atmosphere relative h-screen w-screen cursor-pointer overflow-hidden"
+        onClick={() => setMode("table")}
+      >
+        <Constellation
+          payload={payload}
+          animate
+          selectedId={null}
+          onSelect={() => {}}
+          focusId={null}
+          visible={() => true}
+        />
+        <div className="pointer-events-none absolute inset-x-0 bottom-10 z-20 text-center">
+          <p className="font-mono text-[11px] uppercase tracking-[0.35em] text-dim">
+            crystallising your taste
+          </p>
+          <p className="mt-2 font-mono text-[10px] text-dim/60">tap to skip</p>
+        </div>
+      </main>
+    );
+  }
+
+  // explore
+  const selectedNode = selectedId ? nodeById.get(selectedId) ?? null : null;
   const selectedRec =
     selectedNode?.type === "recommended"
       ? payload.recommendations.find((r) => r.id === selectedId) ?? null
@@ -89,18 +136,14 @@ export default function ConstellationView({ username }: { username: string }) {
     <main className="atmosphere relative h-screen w-screen overflow-hidden">
       <Constellation
         payload={payload}
+        animate={false}
         selectedId={selectedId}
         onSelect={setSelectedId}
         focusId={focusId}
         visible={visible}
       />
-      <Header payload={payload} />
-      <Filters
-        clusters={payload.clusters}
-        genres={genres}
-        state={filters}
-        setState={setFilters}
-      />
+      <ExploreHeader payload={payload} onBack={() => setMode("table")} />
+      <Filters clusters={payload.clusters} genres={genres} state={filters} setState={setFilters} />
       <Legend />
       <RecRail
         recommendations={payload.recommendations}
@@ -120,38 +163,21 @@ export default function ConstellationView({ username }: { username: string }) {
   );
 }
 
-function Header({ payload }: { payload: GraphPayload }) {
-  const [copied, setCopied] = useState(false);
-  const share = () => {
-    navigator.clipboard?.writeText(window.location.href).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    });
-  };
-  const { rated, avg_rating, clusters } = payload.stats;
+function ExploreHeader({ payload, onBack }: { payload: GraphPayload; onBack: () => void }) {
   return (
-    <header className="pointer-events-auto absolute left-4 top-4 z-20 flex items-center gap-4">
-      <Link
-        href="/"
-        className="font-display text-sm text-dim transition hover:text-leader"
-        aria-label="Home"
+    <header className="pointer-events-auto absolute left-4 top-4 z-30 flex items-center gap-4">
+      <button
+        onClick={onBack}
+        className="rounded-full border border-white/10 bg-panel/70 px-3 py-1.5 font-display text-sm text-leader backdrop-blur transition hover:border-beam/40"
       >
-        ←
-      </Link>
+        ← Recommendations
+      </button>
       <div>
-        <h1 className="font-display text-base font-semibold leading-none text-leader">
+        <h1 className="font-display text-sm font-semibold leading-none text-leader">
           @{payload.username}
         </h1>
-        <p className="mt-1 font-mono text-[11px] text-dim">
-          {rated} rated · avg {avg_rating.toFixed(2)} · {clusters} clusters
-        </p>
+        <p className="mt-1 font-mono text-[11px] text-dim">how the map was built</p>
       </div>
-      <button
-        onClick={share}
-        className="ml-2 rounded-full border border-white/10 bg-panel/70 px-3 py-1.5 font-mono text-[11px] text-dim backdrop-blur transition hover:border-beam/40 hover:text-leader"
-      >
-        {copied ? "copied ✓" : "share"}
-      </button>
     </header>
   );
 }
@@ -204,9 +230,7 @@ function ErrorScreen({
       role="alert"
       className="atmosphere flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center"
     >
-      <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-dim">
-        @{username}
-      </p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-dim">@{username}</p>
       <p className="max-w-md font-display text-xl leading-snug text-leader">{error.message}</p>
       <Link
         href="/"

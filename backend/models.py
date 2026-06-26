@@ -85,8 +85,7 @@ class Because(BaseModel):
 
 
 class Recommendation(BaseModel):
-    """A scored, explained recommendation (internal Phase 1 shape; the SPEC §5 graph
-    payload is assembled in Phase 2)."""
+    """A scored, explained recommendation, carrying everything the UI table renders."""
 
     id: str  # "tmdb:{id}"
     tmdb_id: int
@@ -95,6 +94,14 @@ class Recommendation(BaseModel):
     score: float
     because: list[Because] = Field(default_factory=list)
     shared_traits: list[str] = Field(default_factory=list)
+    # Display metadata (from the candidate Film; review scores present when OMDb-enriched).
+    poster_url: str | None = None
+    genres: list[str] = Field(default_factory=list)
+    director: str | None = None
+    runtime: int | None = None
+    imdb_rating: float | None = None
+    metascore: int | None = None
+    rotten_tomatoes: int | None = None
 
 
 class Node(BaseModel):

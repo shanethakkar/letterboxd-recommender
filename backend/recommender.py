@@ -388,6 +388,13 @@ def recommend(
                 score=round(float(scores[idx]), 4),
                 because=because,
                 shared_traits=_shared_traits(cand, neighbours),
+                poster_url=cand.poster_url,
+                genres=cand.genres,
+                director=cand.director,
+                runtime=cand.runtime,
+                imdb_rating=cand.imdb_rating,
+                metascore=cand.metascore,
+                rotten_tomatoes=cand.rotten_tomatoes,
             )
         )
     return recs

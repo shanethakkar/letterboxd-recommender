@@ -208,3 +208,26 @@ spread nodes apart — it never magnified posters. Switched poster/ring/halo to 
 (`sizeUnits:"common"` + `sizeScale = span/620` to keep the default look, + min/max pixel clamps) so
 zoom now enlarges posters; bumped source thumbnails w92→w154 (crisp when large), raised `maxZoom`
 8→11, and added hover-to-enlarge (`getSize` ×1.7 on hover, 160ms). Verified via Playwright zoom test.
+
+## 2026-06-26 — Pivot: the recommendations TABLE is the product; constellation = reveal + opt-in explore
+**Decision:** After using it, the user judged the constellation "more wow than useful" and asked to make
+the recommendations themselves front-and-centre. So:
+1. **A ranked recommendations table** (poster-forward **card-list**) becomes the primary surface:
+   poster, title/year, match score, **IMDb/Metacritic/Rotten Tomatoes**, director, runtime, genres, the
+   **"because you rated …"** (foregrounded in amber — our differentiator), shared traits, and TMDB +
+   Letterboxd (`/tmdb/{id}`) links. **Sortable** (match/IMDb/Meta/year/A–Z) + **genre filter**.
+2. **Backend:** enrich the `Recommendation` payload with genres/director/runtime/poster + IMDb/Meta/RT —
+   data we already computed (OMDb) but were discarding before serialization. (`models.py`,
+   `recommender.py`, `types.ts`.)
+3. **Constellation demoted** to (a) the crystallization **reveal** on load that **auto-hands off** to the
+   table (~2.8s), and (b) an **opt-in "Explore the constellation"** interactive mode (with a "←
+   Recommendations" back button). `Constellation` gained an `animate` flag (crystallize on reveal,
+   instant in explore); removed the grey backing-dot circles under posters (user request). The table is
+   also the **no-WebGL fallback** (deleted `RankedList.tsx`).
+**Why:** The genuine value is a great, scannable, *explainable* recommendations list; the map is a
+beautiful flourish, not the tool. This keeps the craft (reveal + explore) while putting the useful
+artifact first. Verified via Playwright: reveal → table → explore.
+**Affects:** SPEC §6 (rewritten note); `backend/models.py` + `recommender.py` (Recommendation fields);
+`frontend`: new `RecommendationsTable.tsx`, `ConstellationView.tsx` (reveal/table/explore modes),
+`Constellation.tsx` (animate prop, no dots), `types.ts`, deleted `RankedList.tsx`. **Still Phase 4:**
+streaming the reveal during the real build over SSE. Possible later tweak: drop the amber rec rings too.

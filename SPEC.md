@@ -189,13 +189,14 @@ Notes: `id` is a stable `tmdb:{id}` string. Recommended nodes carry `score`; wat
 
 ## 6. Frontend
 
-> **Phase 3.5 refinement (implemented).** The map is **recommendation-first**: nodes = the recs
-> (bright posters with a persistent amber ring — the "stars") + only the watched films that **explain**
-> them (their `because` seeds, dim/small) — not the whole diary. A docked **recommendations rail**
-> (ranked list, like `recommendations-sthakkar.md`) expands to a full list view; clicking a rec flies
-> the camera to it and lights its amber "why" edges. On load the map **crystallizes** (poster cloud →
-> settled clusters, ease-out ~1.4s, reduced-motion-aware) — the client-side reveal; SSE-bound progress
-> is Phase 4. See DECISIONS.
+> **Phase 3.6 pivot (implemented) — the recommendations TABLE is the product.** A ranked, poster-forward
+> **card-list** is the primary surface: each rec shows poster, title/year, match score, **IMDb/Metacritic/RT**,
+> director, genres, the **"because you rated …"** (our differentiator, in amber), and TMDB + Letterboxd
+> links — sortable (match/IMDb/Meta/year) and genre-filterable. The **constellation is demoted to (a) the
+> crystallization *reveal*** on load (poster cloud → settled clusters, ease-out ~1.4s, then auto-hands off
+> to the table) **and (b) an opt-in "Explore the constellation"** interactive mode. The map there is
+> recommendation-first (recs = amber-ringed "stars"; their `because` seeds = dim context; no backing
+> circles). The table is also the no-WebGL fallback. SSE-streamed reveal stays Phase 4. See DECISIONS.
 
 ### 6.1 Routes
 - `/` — landing: username input, one-line pitch, a looping demo constellation.
