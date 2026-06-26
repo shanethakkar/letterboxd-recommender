@@ -8,24 +8,26 @@ from backend.models import Film, ScrapedFilm, ScrapeResult
 LOVED = list(range(1, 13))  # 12 loved films, tmdb ids 1..12
 
 
+def _film(i: int) -> Film:
+    return Film(
+        tmdb_id=i,
+        title=f"F{i}",
+        genres=["Action"],
+        vote_count=1000,
+        vote_average=7.0,
+        year=2015,  # clears the vote floor
+    )
+
+
 class _FakeTMDB:
     async def get_movies(self, ids, **_kw) -> dict[int, Film]:
-        return {
-            i: Film(
-                tmdb_id=i,
-                title=f"F{i}",
-                genres=["Action"],
-                vote_count=1000,  # clears the vote floor
-                vote_average=7.0,
-                year=2015,
-                # each film recommends every other loved film → held-out films are reachable
-                tmdb_recommendations=[j for j in LOVED if j != i],
-            )
-            for i in ids
-        }
+        return {i: _film(i) for i in ids}
 
-    async def discover_backfill(self, **_kw) -> list[int]:
-        return []
+    async def grow_candidate_pool(self, seed_films, exclude_ids, **_kw):
+        # Everything loved-but-not-excluded is reachable (so held-out films can be recommended).
+        ids = [i for i in LOVED if i not in exclude_ids]
+        films = [_film(i) for i in ids]
+        return films, [1.0] * len(films)
 
 
 async def test_evaluate_returns_valid_metrics_and_reaches_heldout(monkeypatch) -> None:

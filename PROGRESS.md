@@ -73,6 +73,13 @@ _Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (proj
     ranking model; multi-centroid (k=5) showed no gain vs k=1. 32 tests pass, ruff clean.
   - Next accuracy lever (Tier 2): widen candidate recall (2-hop TMDB graph, larger cap, taste-filtered
     discover) — now measurable via the harness.
+- [x] **Recall work: 2-hop candidate expansion + raised cap (`grow_candidate_pool`)**
+  - Shared pool builder (validate + evaluate): 1-hop seeds' recs/similar → 2nd hop from strongest
+    candidates → cap ~1500 (was 500/600). `memo` shares enrichment across eval splits.
+  - **Measured win: pool-recall 13%→25.9%, recall@20 9.3%→20.4% (≈2×)**; recall@100 ≈ pool-recall
+    (ranking sound, breadth is the remaining lever). Real recs didn't regress (Donnie Brasco, Brick←
+    Knives Out, Gangs of New York surfaced). 33 tests pass, ruff clean.
+  - Further recall levers (later): 3-hop, taste-filtered discover, true collaborative filtering.
 - Next: Phase 2 — UMAP projection, clusters, kNN edges, assemble the SPEC §5 graph payload.
 
 ## Phase 1 retro (what I learned)

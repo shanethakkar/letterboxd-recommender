@@ -22,13 +22,12 @@ from backend.cache import create_redis
 from backend.models import Film
 from backend.omdb import create_omdb_client
 from backend.recommender import recommend
-from backend.tmdb import build_candidate_pool, create_tmdb_client
+from backend.tmdb import create_tmdb_client
 
 # Seeds = the user's top-rated films (≥ SEED_MIN_RATING) whose TMDB recs/similar grow the
 # candidate pool. Dynamic: uses all that qualify, up to SEED_MAX (big profiles → broader recall).
 SEED_MAX = 150
 SEED_MIN_RATING = 4.0
-MAX_CANDIDATES = 600  # cap enrichment + MMR cost
 CONTENDERS = 120  # pass-1 shortlist that gets OMDb-enriched (under the 1k/day budget)
 TOP_N = 20
 
@@ -71,26 +70,16 @@ async def run(username: str) -> None:
             watched.append(film)
         print(f"  enriched {len(watched)} watched films in {time.perf_counter() - t:.0f}s")
 
-        # 3. Build + enrich candidate pool ------------------------------------
+        # 3. Build + enrich candidate pool (2-hop expansion for recall) -------
         t = time.perf_counter()
         seeds = sorted(watched, key=lambda f: f.rating or 0.0, reverse=True)
         top_seeds = [f for f in seeds if (f.rating or 0) >= SEED_MIN_RATING][:SEED_MAX]
         top_seeds = top_seeds or seeds[:SEED_MAX]
-        backfill = await tmdb.discover_backfill()
-        provenance_map = build_candidate_pool(top_seeds, scrape.logged_tmdb_ids(), backfill)
-        ranked = sorted(provenance_map.items(), key=lambda kv: kv[1], reverse=True)[:MAX_CANDIDATES]
-
-        cand_map = await tmdb.get_movies([cid for cid, _ in ranked])
-        candidates: list[Film] = []
-        provenance: list[int] = []
-        for cid, prov in ranked:
-            film = cand_map.get(cid)
-            if film is not None:
-                candidates.append(film)
-                provenance.append(prov)
+        candidates, provenance = await tmdb.grow_candidate_pool(top_seeds, scrape.logged_tmdb_ids())
+        cand_map: dict[int, Film] = {f.tmdb_id: f for f in candidates}
         print(
             f"  candidate pool: {len(candidates)} films "
-            f"(from {len(top_seeds)} seeds + backfill) in {time.perf_counter() - t:.0f}s"
+            f"(from {len(top_seeds)} seeds, 2-hop) in {time.perf_counter() - t:.0f}s"
         )
 
         # 4. Two-pass scoring with OMDb review enrichment ---------------------

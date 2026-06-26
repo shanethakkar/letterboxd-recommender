@@ -89,6 +89,62 @@ class TMDBClient:
             ids.extend(r["id"] for r in resp.json().get("results", []) if "id" in r)
         return ids
 
+    async def grow_candidate_pool(
+        self,
+        seed_films: list[Film],
+        exclude_ids: set[int],
+        *,
+        backfill_pages: int = 4,
+        expand_top: int = 200,
+        max_candidates: int = 1500,
+        memo: dict[int, Film] | None = None,
+    ) -> tuple[list[Film], list[float]]:
+        """Build + enrich the candidate pool, expanding up to 2 hops for recall (SPEC §4.2).
+
+        Hop 1 = seeds' TMDB recommendations/similar (+ a discover backfill). If that leaves
+        room under `max_candidates`, hop 2 adds the neighbours of the strongest hop-1
+        candidates — reaching films no seed points to directly (the main recall lever).
+        Returns enriched candidate Films + aligned provenance (how many neighbours surfaced
+        each — the rec-graph signal; 2-hop hits count half). `memo` lets callers share
+        enrichment across calls (e.g. eval splits) to avoid refetching.
+        """
+        cache = memo if memo is not None else {}
+
+        async def _enrich(ids: list[int]) -> None:
+            missing = [i for i in ids if i not in cache]
+            if missing:
+                cache.update(await self.get_movies(missing))
+
+        backfill = await self.discover_backfill(pages=backfill_pages)
+        provenance: dict[int, float] = {
+            cid: float(n)
+            for cid, n in build_candidate_pool(seed_films, exclude_ids, backfill).items()
+        }
+
+        def _ranked() -> list[int]:
+            return [c for c, _ in sorted(provenance.items(), key=lambda kv: kv[1], reverse=True)]
+
+        # Hop 1.
+        await _enrich(_ranked()[:max_candidates])
+        enriched_ids = [c for c in _ranked() if c in cache][:max_candidates]
+
+        # Hop 2 — only if there's headroom under the cap.
+        if len(enriched_ids) < max_candidates:
+            for cid in enriched_ids[:expand_top]:
+                f = cache[cid]
+                for nid in (*f.tmdb_recommendations, *f.tmdb_similar):
+                    if nid not in exclude_ids:
+                        provenance[nid] = provenance.get(nid, 0.0) + 0.5
+            hop2 = [c for c in _ranked() if c not in cache][: max_candidates - len(enriched_ids)]
+            await _enrich(hop2)
+
+        ranked = sorted(
+            ((c, provenance[c]) for c in provenance if c in cache and c not in exclude_ids),
+            key=lambda kv: kv[1],
+            reverse=True,
+        )[:max_candidates]
+        return [cache[c] for c, _ in ranked], [p for _, p in ranked]
+
     def _parse(self, data: dict[str, Any]) -> Film:
         release_date = data.get("release_date") or ""
         year = int(release_date[:4]) if release_date[:4].isdigit() else None

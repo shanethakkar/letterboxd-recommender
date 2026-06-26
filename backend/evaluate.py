@@ -24,7 +24,7 @@ from backend import scraper
 from backend.cache import create_redis
 from backend.models import Film
 from backend.recommender import recommend
-from backend.tmdb import TMDBClient, build_candidate_pool, create_tmdb_client
+from backend.tmdb import TMDBClient, create_tmdb_client
 
 HOLD_THRESHOLD = 4.5  # "loved" films we try to predict
 HOLD_FRACTION = 0.25
@@ -33,7 +33,6 @@ EVAL_TOP_N = 100  # rank this many, then measure recall at several cut-offs
 RECALL_KS = (20, 50, 100)
 SEED_MIN_RATING = 4.0
 SEED_MAX = 150
-MAX_CANDIDATES = 500
 
 
 async def _get_movies_memo(
@@ -77,10 +76,10 @@ async def evaluate(
             return None
 
         logged = scrape.logged_tmdb_ids()
-        backfill = await tmdb.discover_backfill()
         rng = random.Random(0)
         hold_n = max(1, round(len(positives) * HOLD_FRACTION))
         pool_recalls: list[float] = []
+        pool_sizes: list[int] = []
         recalls: dict[int, list[float]] = {k: [] for k in RECALL_KS}
 
         for _ in range(n_splits):
@@ -93,15 +92,9 @@ async def evaluate(
             ][:SEED_MAX]
 
             # Exclude everything logged EXCEPT the held-out films, so they *can* be recommended.
-            prov_map = build_candidate_pool(train_seeds, logged - test, backfill)
-            ranked = sorted(prov_map.items(), key=lambda kv: kv[1], reverse=True)[:MAX_CANDIDATES]
-            cand_map = await _get_movies_memo(tmdb, [cid for cid, _ in ranked], memo)
-            candidates: list[Film] = []
-            provenance: list[int] = []
-            for cid, prov in ranked:
-                if cid in cand_map:
-                    candidates.append(cand_map[cid])
-                    provenance.append(prov)
+            candidates, provenance = await tmdb.grow_candidate_pool(
+                train_seeds, logged - test, memo=memo
+            )
             cand_ids = {f.tmdb_id for f in candidates}
 
             recs = recommend(
@@ -114,6 +107,7 @@ async def evaluate(
             )
             ranked_ids = [r.tmdb_id for r in recs]
 
+            pool_sizes.append(len(candidates))
             pool_recalls.append(len(test & cand_ids) / len(test))
             for k in RECALL_KS:
                 recalls[k].append(len(test & set(ranked_ids[:k])) / len(test))
@@ -124,13 +118,14 @@ async def evaluate(
         "pool_recall": statistics.mean(pool_recalls),
         **{f"recall@{k}": statistics.mean(recalls[k]) for k in RECALL_KS},
     }
+    mean_pool = round(statistics.mean(pool_sizes)) if pool_sizes else 0
     print(
         f"\n  EVAL @{username}  (clusters={n_clusters}, splits={n_splits}, "
         f"hold≥{HOLD_THRESHOLD}, ~{hold_n}/{len(positives)} held out/split)"
     )
-    print(f"  pool-recall@{MAX_CANDIDATES}: {result['pool_recall']:.1%}   (reachable in pool)")
+    print(f"  pool-recall:  {result['pool_recall']:.1%}   (reachable in pool, ≈{mean_pool} films)")
     for k in RECALL_KS:
-        print(f"  recall@{k:<3}        {result[f'recall@{k}']:.1%}   (ranked into top-{k})")
+        print(f"  recall@{k:<3}     {result[f'recall@{k}']:.1%}   (ranked into top-{k})")
     return result
 
 

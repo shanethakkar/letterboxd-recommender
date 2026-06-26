@@ -3,6 +3,7 @@
 import httpx
 
 from backend.config import Settings
+from backend.models import Film
 from backend.tmdb import TMDBClient
 
 # Trimmed but structurally faithful TMDB `append_to_response` payload for Inception.
@@ -78,3 +79,32 @@ async def test_parses_credits_keywords_and_related_ids() -> None:
 async def test_builds_poster_url_from_image_base() -> None:
     film = await _client_returning(SAMPLE).get_movie(27205)
     assert film.poster_url == ("https://image.tmdb.org/t/p/w185/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg")
+
+
+async def test_grow_candidate_pool_reaches_two_hops() -> None:
+    # seed → recommends 1 & 2 (hop 1); film 1 → recommends 99 (hop 2, no seed points to it).
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/3/discover/movie":
+            return httpx.Response(200, json={"results": []})
+        mid = int(request.url.path.rsplit("/", 1)[1])
+        recs = {1: [99]}.get(mid, [])
+        return httpx.Response(
+            200,
+            json={
+                "id": mid,
+                "title": str(mid),
+                "vote_count": 1000,
+                "recommendations": {"results": [{"id": r} for r in recs]},
+                "similar": {"results": []},
+            },
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = TMDBClient(http, Settings(tmdb_api_key="k"))
+    seed = Film(tmdb_id=10, title="seed", tmdb_recommendations=[1, 2])
+
+    films, prov = await client.grow_candidate_pool([seed], set(), expand_top=10, max_candidates=50)
+    ids = {f.tmdb_id for f in films}
+    assert {1, 2} <= ids  # hop 1: direct seed recommendations
+    assert 99 in ids  # hop 2: reachable only via film 1's recommendations
+    assert len(prov) == len(films)

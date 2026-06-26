@@ -70,7 +70,7 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 ### 4.2 `tmdb.py`
 - Async client (httpx). Single batched call per film via `append_to_response`.
 - Extract: `genres[]`, `director`, `top_cast[5]`, `keywords[]`, `release_decade`, `original_language`, `runtime_bucket`, `poster_path`, `tmdb_recommendations[]`, `tmdb_similar[]`.
-- Candidate pool = union of `recommendations`+`similar` for the user's top-rated films, plus an acclaimed/popular backfill from `discover`, minus everything already logged (watched + watchlist).
+- Candidate pool (`grow_candidate_pool`) = union of `recommendations`+`similar` for the user's top-rated seeds (+ acclaimed/popular `discover` backfill), **expanded a 2nd hop** from the strongest hop-1 candidates (recs-of-recs — reaches films no seed points to directly), capped at ~1500 by provenance, minus everything already logged. 2-hop + the raised cap ≈doubled held-out recall (13%→26%, see §4.7).
 - Also capture each film's `imdb_id` (top-level on `/movie/{id}` — free). A separate `omdb.py` then enriches the **top scoring candidates** with IMDb rating + Metacritic + Rotten Tomatoes (OMDb API), cached permanently in Redis. OMDb's 1,000/day free limit is why only the shortlist is enriched; with no OMDb key it's skipped (TMDB-only quality).
 
 ### 4.3 `features.py`
@@ -101,7 +101,7 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 
 ### 4.7 `evaluate.py` (accuracy harness)
 - Leave-one-out: hold out a fraction of the user's highly-rated films, build the recommender from the rest (held-out films treated as unseen so they *can* be recommended), and measure **pool-recall@N** (held-out films reachable in the candidate pool) + **recall@K** (held-out films ranked into the top-K), averaged over splits. Compare models (e.g. `--clusters`) on the same splits.
-- Turns "more accurate" into a number. First finding (@sthakkar): pool-recall ≈ 13% → **candidate recall is the dominant ceiling**, not the ranking model; multi-centroid taste showed no gain (left opt-in). Next accuracy work = widen recall (deeper TMDB graph / recs-of-recs, larger candidate cap, taste-filtered discover).
+- Turns "more accurate" into a number. First finding (@sthakkar): pool-recall ≈ 13% → **candidate recall is the dominant ceiling**, not the ranking model; multi-centroid taste showed no gain (left opt-in). Acting on it, **2-hop expansion + a raised candidate cap doubled recall** (pool-recall 13%→26%, recall@20 9%→20%); recall@100 ≈ pool-recall, confirming ranking is sound and breadth is the remaining lever (further: 3-hop, taste-filtered discover, true CF).
 
 ---
 

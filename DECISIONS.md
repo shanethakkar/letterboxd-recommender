@@ -108,3 +108,17 @@ k=1, so it's opt-in pending recall work. Decision driven by evidence, not intuit
 `backend/evaluate.py`; `scraper.py` (budget), `recommender.py` (taste_centroids/content_scores,
 `n_clusters`), `validate_recommender.py` (SEED_MAX). **Next accuracy lever:** widen candidate recall
 (deeper/2-hop TMDB graph, larger candidate cap, taste-filtered discover) — Tier 2.
+
+## 2026-06-25 — Widen candidate recall: 2-hop expansion + raised cap
+**Decision:** Add `TMDBClient.grow_candidate_pool` (shared by validate + evaluate): build the 1-hop
+pool (seeds' recs/similar + discover), then **expand a 2nd hop** from the strongest hop-1 candidates
+(recs-of-recs), capped at ~1500 (was 500/600). 2-hop hits enter at half provenance weight. A `memo`
+param shares enrichment across eval splits.
+**Why:** The harness proved candidate recall — not ranking — was the ceiling (pool-recall 13%). This is
+the directly-indicated fix. **Result (@sthakkar, measured): pool-recall 13%→25.9%, recall@20
+9.3%→20.4%** (≈2×); recall@100 ≈ pool-recall, so ranking is sound and breadth is the remaining lever.
+Real recs didn't regress (surfaced strong new matches: Donnie Brasco←GoodFellas/Departed, Brick←Knives
+Out, Gangs of New York, Lost Highway←Mulholland Drive).
+**Affects:** SPEC §4.2 (2-hop pool) + §4.7 (result); `backend/tmdb.py` (`grow_candidate_pool`),
+`validate_recommender.py` + `evaluate.py` (use it; removed duplicated pool code). **Further recall
+levers (later):** 3-hop, taste-filtered discover, true collaborative filtering.
