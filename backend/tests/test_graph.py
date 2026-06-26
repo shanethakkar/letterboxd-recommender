@@ -26,7 +26,8 @@ class _FakeTMDB:
         return {i: _film(i) for i in ids}
 
     async def grow_candidate_pool(self, seed_films, exclude_ids, **_kw):
-        films = [_film(100 + i, genre="Comedy") for i in range(20)]  # 20 unseen candidates
+        # Share the genre with watched so recs get "because" explanations (→ seed nodes).
+        films = [_film(100 + i) for i in range(20)]  # 20 unseen candidates
         return films, [1.0] * len(films)
 
 
@@ -52,10 +53,12 @@ async def test_build_graph_matches_spec5_shape(monkeypatch) -> None:
 
     watched_nodes = [n for n in payload.nodes if n.type == "watched"]
     rec_nodes = [n for n in payload.nodes if n.type == "recommended"]
-    assert len(watched_nodes) == 15
+    seed_ids = {b.id for r in payload.recommendations for b in r.because}
     assert len(rec_nodes) > 0
+    assert watched_nodes  # the "because" seed films appear in the map…
+    assert {n.id for n in watched_nodes} <= seed_ids  # …and ONLY those (recs-first map)
     assert all(n.id.startswith("tmdb:") for n in payload.nodes)
-    assert all(n.rating is not None for n in watched_nodes)  # watched carry rating
+    assert all(n.rating is not None for n in watched_nodes)  # seeds carry rating
     assert all(n.score is not None for n in rec_nodes)  # recs carry score
 
     node_ids = {n.id for n in payload.nodes}

@@ -10,6 +10,7 @@ import { hasWebGL } from "@/lib/webgl";
 import DetailPanel from "./DetailPanel";
 import Filters, { type FilterState } from "./Filters";
 import RankedList from "./RankedList";
+import RecRail from "./RecRail";
 
 const Constellation = dynamic(() => import("./Constellation"), { ssr: false });
 
@@ -24,6 +25,7 @@ export default function ConstellationView({ username }: { username: string }) {
   const [payload, setPayload] = useState<GraphPayload | null>(null);
   const [error, setError] = useState<{ status: number; message: string } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(ALL_VISIBLE);
   const [webgl, setWebgl] = useState(true);
 
@@ -59,6 +61,18 @@ export default function ConstellationView({ username }: { username: string }) {
     return Array.from(new Set(payload.nodes.flatMap((n) => n.genres))).sort();
   }, [payload]);
 
+  const nodeById = useMemo(() => {
+    const m = new Map<string, GraphNode>();
+    for (const n of payload?.nodes ?? []) m.set(n.id, n);
+    return m;
+  }, [payload]);
+
+  // Selecting from the rail both highlights the rec and flies the camera to it.
+  const selectFromRail = useCallback((id: string) => {
+    setSelectedId(id);
+    setFocusId(id);
+  }, []);
+
   if (error) return <ErrorScreen username={username} error={error} />;
   if (!payload) return <LoadingScreen username={username} />;
   if (!webgl) return <RankedList payload={payload} />;
@@ -77,6 +91,7 @@ export default function ConstellationView({ username }: { username: string }) {
         payload={payload}
         selectedId={selectedId}
         onSelect={setSelectedId}
+        focusId={focusId}
         visible={visible}
       />
       <Header payload={payload} />
@@ -87,12 +102,18 @@ export default function ConstellationView({ username }: { username: string }) {
         setState={setFilters}
       />
       <Legend />
+      <RecRail
+        recommendations={payload.recommendations}
+        nodeById={nodeById}
+        selectedId={selectedId}
+        onSelect={selectFromRail}
+      />
       {selectedNode && (
         <DetailPanel
           node={selectedNode}
           recommendation={selectedRec}
           onClose={() => setSelectedId(null)}
-          onSelectSeed={setSelectedId}
+          onSelectSeed={selectFromRail}
         />
       )}
     </main>
@@ -139,13 +160,13 @@ function Legend() {
   return (
     <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex flex-col gap-1 font-mono text-[10px] text-dim">
       <span>
-        <span className="text-leader">●</span> watched · sized by your rating
+        <span className="text-beam">◎</span> recommendations · your next watches
       </span>
       <span>
-        <span className="text-beam">●</span> recommended · sized by match
+        <span className="text-dim">●</span> the films that earned them
       </span>
       <span>
-        <span className="text-beam">—</span> why: the films that earned a rec
+        <span className="text-beam">—</span> why: a rec → the films behind it
       </span>
     </div>
   );

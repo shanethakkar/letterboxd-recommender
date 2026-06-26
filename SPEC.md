@@ -189,6 +189,14 @@ Notes: `id` is a stable `tmdb:{id}` string. Recommended nodes carry `score`; wat
 
 ## 6. Frontend
 
+> **Phase 3.5 refinement (implemented).** The map is **recommendation-first**: nodes = the recs
+> (bright posters with a persistent amber ring — the "stars") + only the watched films that **explain**
+> them (their `because` seeds, dim/small) — not the whole diary. A docked **recommendations rail**
+> (ranked list, like `recommendations-sthakkar.md`) expands to a full list view; clicking a rec flies
+> the camera to it and lights its amber "why" edges. On load the map **crystallizes** (poster cloud →
+> settled clusters, ease-out ~1.4s, reduced-motion-aware) — the client-side reveal; SSE-bound progress
+> is Phase 4. See DECISIONS.
+
 ### 6.1 Routes
 - `/` — landing: username input, one-line pitch, a looping demo constellation.
 - `/u/{username}` — kicks off (or reuses cached) job; renders pipeline → constellation.

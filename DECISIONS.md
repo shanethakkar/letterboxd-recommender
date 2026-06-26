@@ -180,3 +180,26 @@ Playwright: landing, 267-poster constellation, select→detail+amber-halo+dim, c
 **Affects:** SPEC §5 (GET endpoint now; POST/SSE deferred to Phase 4) + §6 (implemented); `backend/app.py`
 (endpoint+CORS), `backend/config.py` (`frontend_origin`); entire `frontend/`. Deferred to Phase 5:
 landing demo loop, mobile node-cap/touch, reduced-motion depth, keyboard-focus a11y, URL-encoded filters.
+
+## 2026-06-26 — Phase 3.5: recommendation-first map + crystallization reveal
+**Decision:** Reframe the constellation around the *recommendations* (user feedback: "I don't need to
+map every movie; I wanted the constellation to visualize the recs, and an easy way to see which are
+recommended"). Three changes:
+1. **Backend payload** (`graph.py`): nodes = the recs + only their `because` seed films (~50 + ~50),
+   not all 217 watched. The recommender still uses all watched internally; the *displayed* set is just
+   recs + the films that earned them. (@sthakkar: 267 → 120 nodes.)
+2. **Recs-first map** (`Constellation.tsx`): recommendations are larger posters with a persistent amber
+   ring (the "stars"); seed films are small/dim context. A **`RecRail`** (ranked list like
+   `recommendations-sthakkar.md`) docks right and expands to a full list-view overlay; clicking a rec
+   flies the camera to it (`LinearInterpolator`) and lights its amber "why" edges. Detail drawer moved left.
+3. **Crystallization reveal:** on load, posters start as a scattered cloud and settle into the UMAP
+   clusters via deck.gl `getPosition` transitions (ease-out `1−2^(−10t)`, ~1.4s); edges/labels appear
+   only after settle (clean reveal); honours `prefers-reduced-motion`. Applied `emil-design-eng` (rare
+   orchestrated moment → ease-out, move-from-visible-cloud not from nothing) + `fixing-motion-performance`
+   (GPU attribute transitions, w92 atlas).
+**Why:** Makes the payoff (recs) the unmistakable subject + trivially scannable, keeps the wow.
+Verified via Playwright: recs-first settled map, mid-crystallization frame, rail→fly-to+why-edges,
+expanded list. tsc+lint+`next build` clean; 44 backend tests pass.
+**Affects:** SPEC §6 (note) + §5 (payload node set is now recs+seeds); `graph.py`, `test_graph.py`;
+`Constellation.tsx`, new `RecRail.tsx`, `ConstellationView.tsx`, `DetailPanel.tsx`. SSE-bound four-act
+still Phase 4.

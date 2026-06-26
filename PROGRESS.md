@@ -128,7 +128,16 @@ _Last updated: 2026-06-25 · Current phase: 3 complete — next is Phase 4 (SSE 
   - Findings: Phase 3 uses a synchronous GET (POST-job+SSE is Phase 4); deck.gl icon atlas needs
     small (w92) thumbnails; Next 16 has breaking changes (Promise `params`, set-state-in-effect lint).
     See DECISIONS.
-- Next: Phase 4 — async job + SSE; bind the four-act animation (crystallization) to phase events.
+- [x] **Phase 3.5 — recommendation-first map + crystallization (user feedback)**
+  - Payload (`graph.py`) now = recs + only their `because` seed films (267 → 120 nodes for @sthakkar);
+    recommender still uses all watched internally.
+  - Recs-first map: recs = bright amber-ringed "stars", seeds = dim context. `RecRail` (ranked list
+    like the .md) docks right + expands to a full list view; click a rec → fly-to + amber "why" edges.
+  - **Crystallization reveal** on load (poster cloud → settled clusters, ease-out ~1.4s, edges after
+    settle, reduced-motion aware). Applied emil-design-eng + fixing-motion-performance.
+  - Verified (Playwright): settled recs-first map, mid-crystallization, rail→fly-to+why-edges, expanded
+    list. tsc+lint+build clean; 44 backend tests pass.
+- Next: Phase 4 — async job + SSE; bind the four-act animation (crystallization) to *real* phase events.
 
 ## Phase 3 retro (what I learned)
 - The installed skills paid off here: `frontend-design` shaped the cinematic monochrome shell,

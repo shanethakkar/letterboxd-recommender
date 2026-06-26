@@ -16,7 +16,7 @@ function tmdbId(id: string): string {
 export default function DetailPanel({ node, recommendation, onClose, onSelectSeed }: Props) {
   const isRec = node.type === "recommended";
   return (
-    <aside className="rise pointer-events-auto absolute right-4 top-4 z-20 flex max-h-[calc(100vh-2rem)] w-[20rem] flex-col overflow-hidden rounded-xl border border-white/10 bg-panel/85 backdrop-blur-md">
+    <aside className="rise pointer-events-auto absolute left-4 top-[5.5rem] z-20 flex max-h-[calc(100vh-7rem)] w-[19rem] flex-col overflow-hidden rounded-xl border border-white/10 bg-panel/85 backdrop-blur-md">
       <div className="flex items-start gap-3 p-4">
         {node.poster_url ? (
           // eslint-disable-next-line @next/next/no-img-element

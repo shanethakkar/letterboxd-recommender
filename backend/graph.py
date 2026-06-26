@@ -62,8 +62,19 @@ async def build_graph(
 
     recs, rec_films = await _recommend(tmdb, http, redis, scrape, watched, user_mean, top_n)
 
-    # Project + cluster + edge the displayed set (watched + recommendations).
-    nodes_films = watched + rec_films
+    # The map is recommendation-first: nodes = the recs + only the watched films that
+    # *explain* them (their "because" seeds). The recommender still used all watched
+    # internally; the displayed set is just recs + the films that earned them.
+    rec_id_set = {f"tmdb:{f.tmdb_id}" for f in rec_films}
+    seed_ids = {b.id for r in recs for b in r.because}
+    seed_films = [
+        f
+        for f in watched
+        if f"tmdb:{f.tmdb_id}" in seed_ids and f"tmdb:{f.tmdb_id}" not in rec_id_set
+    ]
+    nodes_films = rec_films + seed_films
+    n_recs = len(rec_films)
+
     matrix, _ = build_feature_matrix(nodes_films)
     coords = project_2d(matrix)
     labels = cluster_2d(coords)
@@ -71,19 +82,18 @@ async def build_graph(
     edges = similarity_edges(matrix, nodes_films)
 
     score_by_id = {r.tmdb_id: r.score for r in recs}
-    n_watched = len(watched)
     nodes = [
         Node(
             id=f"tmdb:{f.tmdb_id}",
-            type="watched" if i < n_watched else "recommended",
+            type="recommended" if i < n_recs else "watched",
             title=f.title,
             year=f.year,
             poster_url=f.poster_url,
             x=round(float(coords[i][0]), 4),
             y=round(float(coords[i][1]), 4),
             cluster=int(labels[i]),
-            rating=f.rating if i < n_watched else None,
-            score=None if i < n_watched else score_by_id.get(f.tmdb_id),
+            rating=None if i < n_recs else f.rating,
+            score=score_by_id.get(f.tmdb_id) if i < n_recs else None,
             genres=f.genres,
             director=f.director,
         )
