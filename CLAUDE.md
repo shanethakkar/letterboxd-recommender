@@ -54,18 +54,27 @@ don't batch it all to the end, and never let a design change land without a DECI
   on the PowerShell PATH), which manages cpython-3.12. Match the existing per-project `.venv`
   convention used in the user's other repos.
 - The **Bash tool's Git Bash does NOT see `uv`/Python** — run Python tooling via the
-  **PowerShell tool** (or activate `.venv\Scripts\Activate.ps1`).
+  **PowerShell tool**. **`node`/`npm`/`npx` ARE on Git Bash** — run frontend tooling via the Bash tool.
 - **Redis locally = in-process `fakeredis`** (no service to run). Set `REDIS_URL` to a real
   Redis only for production. See DECISIONS.md.
 
-## Commands (PowerShell)
+## Commands
+Backend (PowerShell — `uv`):
 - Create venv:        `uv venv --python 3.12`
 - Install backend:    `uv pip install -r backend/requirements.txt`
-- Run backend:        `uv run uvicorn backend.app:app --reload`
+- Run backend:        `uv run python -m uvicorn backend.app:app --app-dir . --port 8000`
+  (plain `uv run uvicorn …` fails — the project root isn't on `sys.path`; use `python -m` + `--app-dir`)
 - Backend tests:      `uv run pytest -q`
 - Lint/format:        `uv run ruff check . ; uv run ruff format .`
-- Frontend dev:       `cd frontend ; npm run dev`            (later phases)
-- Frontend checks:    `npm run typecheck ; npm run lint`     (later phases)
+
+Frontend (Bash — `npm`; Next.js 16 + deck.gl, lives in `frontend/`):
+- Dev:       `cd frontend && npm run dev`           (http://localhost:3000)
+- Typecheck: `cd frontend && npx tsc --noEmit`      (no `typecheck` script in Next 16)
+- Lint:      `cd frontend && npm run lint`
+- Build:     `cd frontend && npm run build`
+- API base via `NEXT_PUBLIC_API_BASE` (defaults to `http://localhost:8000`).
+- ⚠️ `frontend/AGENTS.md` warns this is **Next.js 16** (breaking changes) — read
+  `frontend/node_modules/next/dist/docs/` before writing Next code.
 
 ## Code conventions
 - Python: full type hints; Pydantic models for all API payloads; async I/O for scrape +

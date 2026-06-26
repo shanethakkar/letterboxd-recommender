@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-06-25 · Current phase: 2 complete — next is Phase 3 (static constellation, Next.js + deck.gl)_
+_Last updated: 2026-06-25 · Current phase: 3 complete — next is Phase 4 (SSE + four-act pipeline animation)_
 
 ## Phase 0 — Backend skeleton
 - [x] Project scaffolding: `.gitignore`, `.env` (+ `.env.example`), `CLAUDE.md`, `PROGRESS.md`, `DECISIONS.md`
@@ -116,8 +116,26 @@ _Last updated: 2026-06-25 · Current phase: 2 complete — next is Phase 3 (stat
 - Next: Phase 3 — Next.js + deck.gl renders the settled map from the payload (posters, edges, hover,
   detail panel, filters). The static constellation is the real core; ship it standalone.
 
-## Phase 3 — Static constellation
-- [ ] Next.js + deck.gl renders the settled map (posters, edges, hover, panel, filters)
+## Phase 3 — Static constellation — COMPLETE
+- [x] Backend `GET /api/graph/{username}` (cache-first) + CORS + domain-error→HTTP mapping.
+- [x] Next.js 16 + deck.gl frontend (`frontend/`): landing, `/u/[username]`, deck.gl
+      `OrthographicView` (poster IconLayer + similarity LineLayer + cluster TextLayer),
+      detail drawer, filters (cluster/genre + watched/recs toggles), share, states,
+      WebGL-degrade ranked list. Monochrome shell per §6.6 (Space Grotesk/Inter/JetBrains Mono).
+- [x] **Verified (Playwright screenshots)**: landing; 267-poster constellation renders; click →
+      select + amber halo + detail panel + dim-others; cluster filter isolates a region.
+      `npx tsc --noEmit` + `npm run lint` clean; `next build` succeeds; 44 backend tests pass.
+  - Findings: Phase 3 uses a synchronous GET (POST-job+SSE is Phase 4); deck.gl icon atlas needs
+    small (w92) thumbnails; Next 16 has breaking changes (Promise `params`, set-state-in-effect lint).
+    See DECISIONS.
+- Next: Phase 4 — async job + SSE; bind the four-act animation (crystallization) to phase events.
+
+## Phase 3 retro (what I learned)
+- The installed skills paid off here: `frontend-design` shaped the cinematic monochrome shell,
+  `web-design-guidelines` audit caught quick a11y wins (aria-labels, img dims, real links),
+  `fixing-motion-performance` thinking drove the w92 atlas. `webapp-testing`/Playwright gave real
+  screenshot evidence (incl. confirming WebGL works headless with SwiftShader flags).
+- deck.gl + Next 16 + React 19 work together; the one gotcha was the icon-atlas texture-size limit.
 
 ## Phase 4 — SSE + pipeline intro
 - [ ] Job endpoint + SSE; four-act animation; crystallization tween

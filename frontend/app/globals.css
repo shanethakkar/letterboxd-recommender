@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/* Constellation design tokens (SPEC §6.6) — monochrome shell; posters supply the colour;
+   projector-amber (--beam) reserved strictly for the active node + "why" edges. */
+@theme {
+  --color-void: #08090b; /* near-black background, faint cool undertone */
+  --color-panel: #121317; /* raised surfaces, detail drawer */
+  --color-leader: #f2f0ea; /* warm film-leader white — primary text/UI */
+  --color-dim: #8a8a93; /* secondary text, inactive labels */
+  --color-beam: #e8c36a; /* projector-amber — active halo + explanation edges ONLY */
+
+  --font-display: var(--font-space-grotesk);
+  --font-body: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-void);
+  color: var(--color-leader);
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Cinematic atmosphere: a faint cool vignette + fine film grain over the void. */
+.atmosphere {
+  position: relative;
+  background:
+    radial-gradient(120% 120% at 50% 0%, rgba(232, 195, 106, 0.04), transparent 45%),
+    radial-gradient(140% 100% at 50% 120%, rgba(20, 24, 36, 0.6), transparent 60%),
+    var(--color-void);
+}
+
+.grain::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Thin, characterful scrollbars for the dark shell. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-dim) transparent;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise {
+  animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}

@@ -1,8 +1,8 @@
-"""FastAPI application — Phase 0 skeleton.
+"""FastAPI application.
 
-Wires Redis (real or fakeredis) and a shared httpx client over the app lifespan, and
-exposes a health probe plus a single-film TMDB endpoint that doubles as the end-to-end
-validation surface for the Letterboxd→TMDB id mapping.
+Wires Redis (real or fakeredis) and a shared httpx client over the app lifespan, and exposes:
+`/health`, `/api/films/{id}` (TMDB id-mapping probe), and `/api/graph/{username}` (the SPEC §5
+graph payload the frontend renders).
 """
 
 from __future__ import annotations
@@ -11,10 +11,12 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 
-from backend import cache
+from backend import cache, scraper
 from backend.config import get_settings
-from backend.models import Film, Health
+from backend.graph import build_graph
+from backend.models import Film, GraphPayload, Health
 from backend.tmdb import create_tmdb_client
 
 
@@ -22,7 +24,7 @@ from backend.tmdb import create_tmdb_client
 async def lifespan(app: FastAPI):
     """Open shared clients on startup; close them on shutdown."""
     app.state.redis = cache.create_redis()
-    app.state.http = httpx.AsyncClient(timeout=10.0)
+    app.state.http = httpx.AsyncClient(timeout=15.0)
     app.state.tmdb = create_tmdb_client(app.state.http, app.state.redis)
     try:
         yield
@@ -32,6 +34,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Constellation API", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=list({get_settings().frontend_origin, "http://localhost:3000"}),
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health", response_model=Health)
@@ -65,3 +74,32 @@ async def get_film(tmdb_id: int, request: Request) -> Film:
         raise HTTPException(502, detail=f"TMDB error ({status}).") from exc
     except httpx.HTTPError as exc:
         raise HTTPException(502, detail="Could not reach TMDB.") from exc
+
+
+@app.get("/api/graph/{username}", response_model=GraphPayload)
+async def get_graph(username: str, request: Request, refresh: bool = False) -> GraphPayload:
+    """The full constellation payload for a user (cache-first; `?refresh=true` rebuilds).
+
+    Cold builds scrape + score and can take minutes; warm cache returns instantly. (Phase 4
+    turns the cold path into a streamed four-act experience.)
+    """
+    try:
+        return await build_graph(
+            username, request.app.state.redis, request.app.state.http, refresh=refresh
+        )
+    except scraper.UserNotFoundError as exc:
+        raise HTTPException(404, detail=f"No public Letterboxd profile for '{username}'.") from exc
+    except scraper.PrivateProfileError as exc:
+        raise HTTPException(
+            403, detail="This profile is private — only public diaries can be mapped."
+        ) from exc
+    except scraper.EmptyProfileError as exc:
+        raise HTTPException(
+            422, detail="This profile has too few rated films to build a taste map."
+        ) from exc
+    except scraper.AccessBlockedError as exc:
+        raise HTTPException(
+            503, detail="Letterboxd is throttling requests right now — try again shortly."
+        ) from exc
+    except scraper.ScrapeError as exc:
+        raise HTTPException(502, detail=f"Could not read that profile: {exc}") from exc

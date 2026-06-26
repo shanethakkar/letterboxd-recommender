@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # OMDb (IMDb + Metacritic + Rotten Tomatoes ratings)
     omdb_api_base: str = "https://www.omdbapi.com/"
 
+    # Frontend origin allowed by CORS (the deployed Vercel URL in production)
+    frontend_origin: str = "http://localhost:3000"
+
     @property
     def tmdb_key_present(self) -> bool:
         return bool(self.tmdb_api_key.strip())

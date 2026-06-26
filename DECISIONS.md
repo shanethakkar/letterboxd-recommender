@@ -155,3 +155,28 @@ labelled clusters, 142 edges, cache hit on 2nd build; JSON eyeballed.
 **Affects:** SPEC §4.5 (rewritten); new `projection.py`/`graph.py`/`validate_graph.py`; `models.py`
 (Node/Edge/Cluster/Stats/GraphPayload mirroring SPEC §5); `requirements.txt` (umap-learn + numba≥0.60
 pin — uv otherwise resolved a pre-3.12 numba). Edge threshold (0.15) + cluster count are tunable in Phase 3.
+
+## 2026-06-25 — Phase 3: static constellation (Next.js 16 + deck.gl)
+**Decision:** Ship the settled WebGL map. Backend: `GET /api/graph/{username}` (cache-first
+`build_graph`; `?refresh`) + CORS + domain-error→HTTP mapping. Frontend (`frontend/`): Next.js 16
+App Router + TS strict + Tailwind v4 + deck.gl `OrthographicView` — poster `IconLayer`, similarity
+`LineLayer`, cluster `TextLayer`; landing, `/u/[username]`, detail drawer, filters (cluster/genre +
+watched/recs toggles), share, loading/error states, and a WebGL-unavailable → ranked-list fallback.
+**Notable choices:**
+- **Phase 3 uses a synchronous `GET /api/graph`, not the SPEC §5 POST-job + SSE flow** — that async
+  "four-act" streaming experience is Phase 4. Cold builds block (~90s); warm cache is instant.
+- **Fonts:** honoured SPEC §6.6's Space Grotesk / Inter / JetBrains Mono even though the `frontend-design`
+  skill steers away from them — the SPEC is the approved plan of record and marks type "swappable"; the
+  real signature is the monochrome-with-amber-only palette + the mono-data identity.
+- **Poster atlas at w92, not w185:** deck.gl auto-packs all poster icons into one texture; w185 overflowed
+  software-GL limits (and is wasteful at ~30–50px on screen). w92 thumbnails in the IconLayer (full-res
+  kept for the detail drawer) — lighter atlas, faster load (a `fixing-motion-performance` win).
+- Next.js **16** (newer than training data) — read its bundled docs per `frontend/AGENTS.md`; `params`
+  is now a Promise (awaited in the server route); the new `react-hooks/set-state-in-effect` lint rule
+  pushed state-reset via a remount `key` instead of in-effect setState.
+**Why:** SPEC §7 calls the static map "the real core … genuinely useful on its own." Verified via
+Playwright: landing, 267-poster constellation, select→detail+amber-halo+dim, cluster filtering; prod
+`next build` clean.
+**Affects:** SPEC §5 (GET endpoint now; POST/SSE deferred to Phase 4) + §6 (implemented); `backend/app.py`
+(endpoint+CORS), `backend/config.py` (`frontend_origin`); entire `frontend/`. Deferred to Phase 5:
+landing demo loop, mobile node-cap/touch, reduced-motion depth, keyboard-focus a11y, URL-encoded filters.
