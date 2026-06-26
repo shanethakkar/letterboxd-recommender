@@ -203,3 +203,8 @@ expanded list. tsc+lint+`next build` clean; 44 backend tests pass.
 **Affects:** SPEC §6 (note) + §5 (payload node set is now recs+seeds); `graph.py`, `test_graph.py`;
 `Constellation.tsx`, new `RecRail.tsx`, `ConstellationView.tsx`, `DetailPanel.tsx`. SSE-bound four-act
 still Phase 4.
+**Follow-up (posters too small / couldn't zoom in):** glyphs were `sizeUnits:"pixels"`, so zoom only
+spread nodes apart — it never magnified posters. Switched poster/ring/halo to **world units**
+(`sizeUnits:"common"` + `sizeScale = span/620` to keep the default look, + min/max pixel clamps) so
+zoom now enlarges posters; bumped source thumbnails w92→w154 (crisp when large), raised `maxZoom`
+8→11, and added hover-to-enlarge (`getSize` ×1.7 on hover, 160ms). Verified via Playwright zoom test.

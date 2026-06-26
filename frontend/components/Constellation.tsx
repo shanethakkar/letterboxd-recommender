@@ -49,7 +49,7 @@ function initialView(nodes: GraphNode[]): ViewState {
     target: [(minX + maxX) / 2, (minY + maxY) / 2, 0],
     zoom: Math.log2(620 / span),
     minZoom: -4,
-    maxZoom: 8,
+    maxZoom: 11,
   };
 }
 
@@ -60,7 +60,7 @@ function sizeOf(n: GraphNode): number {
 }
 
 function thumb(url: string): string {
-  return url.replace("/w185/", "/w92/");
+  return url.replace("/w185/", "/w154/");
 }
 
 export default function Constellation({ payload, selectedId, onSelect, focusId, visible }: Props) {
@@ -157,6 +157,17 @@ export default function Constellation({ payload, selectedId, onSelect, focusId, 
   const withPosters = nodes.filter((n) => n.poster_url);
   const selectedNode = selectedId ? nodeById.get(selectedId) ?? null : null;
 
+  // Size glyphs in WORLD units (so they scale with zoom — pixel units never would), scaled so
+  // the default-zoom look is unchanged, then clamped to sane pixel bounds. Hovering enlarges
+  // a poster for an instant read without clicking.
+  const span = useMemo(() => {
+    const xs = payload.nodes.map((n) => n.x);
+    const ys = payload.nodes.map((n) => n.y);
+    return Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
+  }, [payload.nodes]);
+  const worldScale = span / 620; // matches the fit zoom in initialView
+  const bump = (n: GraphNode) => (n.id === hovered ? 1.7 : 1);
+
   const posTransition = { getPosition: { duration: reduced ? 0 : CRYSTALLIZE_MS, easing: easeOut } };
 
   const layers: Layer[] = [
@@ -166,7 +177,10 @@ export default function Constellation({ payload, selectedId, onSelect, focusId, 
       data: nodes,
       getPosition: pos,
       getRadius: (n) => sizeOf(n) * 0.5,
-      radiusUnits: "pixels",
+      radiusUnits: "common",
+      radiusScale: worldScale,
+      radiusMinPixels: 2,
+      radiusMaxPixels: 150,
       getFillColor: (n) => [...LEADER, isLit(n.id) ? 45 : 12],
       transitions: posTransition,
       updateTriggers: { getPosition: [settled], getFillColor: [active] },
@@ -177,27 +191,37 @@ export default function Constellation({ payload, selectedId, onSelect, focusId, 
       id: "rec-rings",
       data: recs,
       getPosition: pos,
-      getRadius: (n) => sizeOf(n) * 0.62,
-      radiusUnits: "pixels",
+      getRadius: (n) => sizeOf(n) * 0.62 * bump(n),
+      radiusUnits: "common",
+      radiusScale: worldScale,
+      radiusMinPixels: 9,
+      radiusMaxPixels: 210,
       filled: false,
       stroked: true,
       getLineColor: (n) => [...BEAM, n.id === selectedId ? 235 : isLit(n.id) ? 150 : 60],
       getLineWidth: (n) => (n.id === selectedId ? 2 : 1),
       lineWidthUnits: "pixels",
-      transitions: posTransition,
-      updateTriggers: { getPosition: [settled], getLineColor: [active, selectedId] },
+      transitions: { ...posTransition, getRadius: 160 },
+      updateTriggers: {
+        getPosition: [settled],
+        getRadius: [hovered],
+        getLineColor: [active, selectedId],
+      },
       pickable: false,
     }),
     new IconLayer<GraphNode>({
       id: "posters",
       data: withPosters,
-      getIcon: (n) => ({ url: thumb(n.poster_url as string), width: 92, height: 138, id: n.id, mask: false }),
+      getIcon: (n) => ({ url: thumb(n.poster_url as string), width: 154, height: 231, id: n.id, mask: false }),
       getPosition: pos,
-      getSize: sizeOf,
-      sizeUnits: "pixels",
+      getSize: (n) => sizeOf(n) * bump(n),
+      sizeUnits: "common",
+      sizeScale: worldScale,
+      sizeMinPixels: 12,
+      sizeMaxPixels: 340,
       getColor: (n) => [255, 255, 255, isLit(n.id) ? 255 : n.type === "recommended" ? 90 : 55],
-      transitions: posTransition,
-      updateTriggers: { getPosition: [settled], getColor: [active] },
+      transitions: { ...posTransition, getSize: 160 },
+      updateTriggers: { getPosition: [settled], getSize: [hovered], getColor: [active] },
       pickable: true,
       onHover: (info) => setHovered((info.object as GraphNode | null)?.id ?? null),
       onClick: (info) => onSelect((info.object as GraphNode | null)?.id ?? null),
@@ -259,8 +283,11 @@ export default function Constellation({ payload, selectedId, onSelect, focusId, 
           id: "halo",
           data: [selectedNode],
           getPosition: (n) => [n.x, n.y],
-          getRadius: sizeOf(selectedNode) * 0.95,
-          radiusUnits: "pixels",
+          getRadius: sizeOf(selectedNode) * 0.98 * bump(selectedNode),
+          radiusUnits: "common",
+          radiusScale: worldScale,
+          radiusMinPixels: 14,
+          radiusMaxPixels: 360,
           getFillColor: [...BEAM, 45],
           stroked: true,
           getLineColor: [...BEAM, 230],
