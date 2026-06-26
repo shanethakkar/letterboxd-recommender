@@ -7,15 +7,18 @@ graph payload the frontend renders).
 
 from __future__ import annotations
 
+import json
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sse_starlette.sse import EventSourceResponse
 
 from backend import cache, scraper
 from backend.config import get_settings
 from backend.graph import build_graph
+from backend.jobs import stream_build
 from backend.models import Film, GraphPayload, Health
 from backend.tmdb import create_tmdb_client
 
@@ -103,3 +106,20 @@ async def get_graph(username: str, request: Request, refresh: bool = False) -> G
         ) from exc
     except scraper.ScrapeError as exc:
         raise HTTPException(502, detail=f"Could not read that profile: {exc}") from exc
+
+
+@app.get("/api/graph/{username}/stream")
+async def stream_graph(
+    username: str, request: Request, refresh: bool = False
+) -> EventSourceResponse:
+    """Server-Sent Events for a streamed build (Phase 4): `phase` + `nodes` (poster cascade) →
+    `result` (full payload) or `error`. A cache hit emits `result` immediately. Domain errors
+    arrive as an `error` event (the SSE response itself is already 200)."""
+
+    async def events():
+        async for event in stream_build(
+            username, request.app.state.redis, request.app.state.http, refresh=refresh
+        ):
+            yield {"event": event["event"], "data": json.dumps(event["data"])}
+
+    return EventSourceResponse(events())

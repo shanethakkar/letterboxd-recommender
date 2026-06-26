@@ -7,6 +7,8 @@ Orchestrates the full pipeline — scrape → enrich → grow candidate pool →
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
 import httpx
@@ -27,6 +29,14 @@ DEFAULT_TOP_N = 50  # recommendations shown in the constellation
 CACHE_KEY = "rec:{username}"
 CACHE_TTL = 60 * 60 * 24  # 24h (SPEC §4.6)
 
+# An async progress sink for the streamed build (Phase 4). `None` = the plain synchronous path.
+Emit = Callable[[dict], Awaitable[None]]
+
+
+async def _emit(emit: Emit | None, event: dict) -> None:
+    if emit is not None:
+        await emit(event)
+
 
 async def build_graph(
     username: str,
@@ -35,8 +45,14 @@ async def build_graph(
     *,
     top_n: int = DEFAULT_TOP_N,
     refresh: bool = False,
+    emit: Emit | None = None,
 ) -> GraphPayload:
-    """Build (or return cached) the full graph payload for a user."""
+    """Build (or return cached) the full graph payload for a user.
+
+    When `emit` is given (Phase 4 streamed build), pushes `phase` + `nodes` (cascade) events as
+    the pipeline runs. The caller emits the final `result`. With `emit=None` this is the original
+    synchronous build, byte-for-byte.
+    """
     cache_key = CACHE_KEY.format(username=username.lower())
     if not refresh:
         cached = await cache.get_json(redis, cache_key)
@@ -44,22 +60,57 @@ async def build_graph(
             return GraphPayload.model_validate(cached)
 
     tmdb = create_tmdb_client(http, redis)
+    await _emit(emit, {"event": "phase", "data": {"phase": "scraping"}})
     scrape = await scraper.scrape_user(username, redis)
     rated = scrape.rated()
     if not rated:
         raise scraper.EmptyProfileError(username)
     user_mean = scrape.rating_average or sum(f.rating for f in rated) / len(rated)
+    total = len(rated)
+    await _emit(
+        emit,
+        {
+            "event": "phase",
+            "data": {"phase": "scraping", "progress": 1.0, "detail": f"{total} films"},
+        },
+    )
 
-    # Enrich watched films and carry over their rating/liked.
-    watched_map = await tmdb.get_movies([f.tmdb_id for f in rated])
+    # Enrich watched films incrementally, carrying over rating/liked. Each batch streams out so the
+    # frontend can cascade the posters in while scoring + embedding still run.
+    await _emit(
+        emit, {"event": "phase", "data": {"phase": "enriching", "detail": f"{total} films"}}
+    )
+    rating_by_id = {sf.tmdb_id: (sf.rating, sf.liked) for sf in rated}
     watched: list[Film] = []
-    for sf in rated:
-        film = watched_map.get(sf.tmdb_id)
-        if film is None:
+    batch: list[dict] = []
+    async for film in tmdb.stream_movies([f.tmdb_id for f in rated]):
+        rl = rating_by_id.get(film.tmdb_id)
+        if rl is None:
             continue
-        film.rating, film.liked = sf.rating, sf.liked
+        film.rating, film.liked = rl
         watched.append(film)
+        batch.append(
+            {
+                "id": f"tmdb:{film.tmdb_id}",
+                "title": film.title,
+                "year": film.year,
+                "poster_url": film.poster_url,
+                "rating": film.rating,
+            }
+        )
+        if emit is not None and len(batch) >= 8:
+            await _emit(
+                emit,
+                {
+                    "event": "nodes",
+                    "data": {"nodes": batch, "progress": round(len(watched) / total, 3)},
+                },
+            )
+            batch = []
+    if emit is not None and batch:
+        await _emit(emit, {"event": "nodes", "data": {"nodes": batch, "progress": 1.0}})
 
+    await _emit(emit, {"event": "phase", "data": {"phase": "scoring"}})
     recs, rec_films = await _recommend(tmdb, http, redis, scrape, watched, user_mean, top_n)
 
     # The map is recommendation-first: nodes = the recs + only the watched films that
@@ -75,11 +126,19 @@ async def build_graph(
     nodes_films = rec_films + seed_films
     n_recs = len(rec_films)
 
-    matrix, _ = build_feature_matrix(nodes_films)
-    coords = project_2d(matrix)
-    labels = cluster_2d(coords)
-    labelmap = cluster_labels(nodes_films, labels)
-    edges = similarity_edges(matrix, nodes_films)
+    # Project + cluster + edge the displayed set. This block is CPU-bound (UMAP/sklearn) and would
+    # block the event loop — run it off-thread so queued phase/nodes events actually flush.
+    await _emit(emit, {"event": "phase", "data": {"phase": "embedding"}})
+
+    def _embed() -> tuple:
+        matrix, _ = build_feature_matrix(nodes_films)
+        coords = project_2d(matrix)
+        labels = cluster_2d(coords)
+        labelmap = cluster_labels(nodes_films, labels)
+        edges = similarity_edges(matrix, nodes_films)
+        return coords, labels, labelmap, edges
+
+    coords, labels, labelmap, edges = await asyncio.to_thread(_embed)
 
     score_by_id = {r.tmdb_id: r.score for r in recs}
     nodes = [

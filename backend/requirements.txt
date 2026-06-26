@@ -17,6 +17,9 @@ numpy
 umap-learn
 numba>=0.60  # pin a Python 3.12-compatible numba (umap-learn's dep; uv otherwise picks an ancient one)
 
+# Phase 4 — streamed build (SSE)
+sse-starlette
+
 # Dev / test
 pytest
 pytest-asyncio

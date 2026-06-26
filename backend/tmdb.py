@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from typing import Any
 
 import httpx
@@ -113,6 +113,28 @@ class TMDBClient:
 
         results = await asyncio.gather(*(_one(i) for i in unique_ids))
         return {tmdb_id: film for r in results if r is not None for tmdb_id, film in [r]}
+
+    async def stream_movies(
+        self, ids: Iterable[int], *, concurrency: int = 8
+    ) -> AsyncIterator[Film]:
+        """Yield films as each resolves (Phase 4 cascade) — same bounded fetch as `get_movies`,
+        but films surface in completion order instead of all at once. Failures are skipped."""
+        sem = asyncio.Semaphore(concurrency)
+        unique_ids = list(dict.fromkeys(ids))
+
+        async def _one(tmdb_id: int) -> Film | None:
+            async with sem:
+                try:
+                    return await self.get_movie(tmdb_id)
+                except httpx.HTTPError as exc:
+                    logger.warning("TMDB fetch failed for %s: %s", tmdb_id, exc)
+                    return None
+
+        tasks = [asyncio.create_task(_one(i)) for i in unique_ids]
+        for fut in asyncio.as_completed(tasks):
+            film = await fut
+            if film is not None:
+                yield film
 
     async def discover_backfill(self, *, pages: int = 4, min_votes: int = 2000) -> list[int]:
         """Acclaimed/popular backfill ids from `/discover/movie` (SPEC §4.2).
