@@ -197,9 +197,13 @@ Notes: `id` is a stable `tmdb:{id}` string. Recommended nodes carry `score`; wat
 > defocused bokeh background** (`GlassBackground` — a static, blurred poster field; never live WebGL behind
 > `backdrop-filter`). The flow: **reveal** (poster cloud → settled clusters, ease-out ~1.4s) → the same canvas
 > **recedes** (blurs/dims/pushes back ~0.9s, then the WebGL unmounts) → **glass** (recs over the bokeh) → opt-in
-> **"Explore the constellation"** brings the live interactive map forward (recs = amber-ringed "stars"; `because`
-> seeds = dim context; no backing circles), with a back button. The glass console is also the no-WebGL fallback.
-> `prefers-reduced-motion` → straight to glass, no recede. SSE-streamed reveal stays Phase 4. See DECISIONS.
+> **"Explore the constellation"** brings the live interactive map forward, with a back button. **Phase 3.8**
+> renders that explore map as a **node-link constellation, not a poster wall**: nodes are **dots coloured by
+> taste cluster** (recommendations are larger, amber-ringed, glowing **stars**), titles sit under the dots
+> (recs always; the rest on hover or once zoomed in), and the **poster blooms in on hover** — so the structure
+> (clusters + "why" edges) is finally legible. The glass console is also the no-WebGL fallback.
+> `prefers-reduced-motion` → straight to glass, no recede. The crystallization **reveal** keeps the poster
+> spectacle (`variant="posters"`); explore uses `variant="dots"`. SSE-streamed reveal stays Phase 4. See DECISIONS.
 
 ### 6.1 Routes
 - `/` — landing: username input, one-line pitch, a looping demo constellation.
@@ -234,6 +238,10 @@ Respect `prefers-reduced-motion`: skip straight to the settled constellation.
 
 ### 6.6 Design tokens
 Monochrome shell so the **posters supply the color**; one functional accent for "why".
+> **Phase 3.8 amendment:** the explore map is the one place that introduces colour beyond the poster
+> thumbnails — node dots are tinted by **taste cluster** (a muted, desaturated 6-hue palette, `CLUSTER_COLORS`
+> in `Constellation.tsx`) so colour *encodes* structure rather than decorates. Amber (`--beam`) stays reserved
+> for recommendations + "why". The shell (glass console, panels, type) remains monochrome. See DECISIONS.
 
 ```
 --void:        #08090B   /* near-black background, faint cool undertone */

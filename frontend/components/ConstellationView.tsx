@@ -190,6 +190,7 @@ export default function ConstellationView({ username }: { username: string }) {
           <Constellation
             payload={payload}
             animate={false}
+            variant="dots"
             selectedId={selectedId}
             onSelect={setSelectedId}
             focusId={focusId}
@@ -249,7 +250,7 @@ function Legend() {
         <span className="text-beam">◎</span> recommendations · your next watches
       </span>
       <span>
-        <span className="text-dim">●</span> the films that earned them
+        <span className="text-dim">●</span> colour = a region of your taste · hover for the poster
       </span>
       <span>
         <span className="text-beam">—</span> why: a rec → the films behind it

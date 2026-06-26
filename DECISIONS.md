@@ -257,3 +257,31 @@ straight to glass, no recede/drift.
 recede is a CSS wrapper). Verified via Playwright: reveal → recede → glass → explore → back, plus a
 reduced-motion run, all with zero page errors. **Still Phase 4:** binding the reveal to real build progress
 over SSE; optionally snapshotting the actual crystallized canvas as the bokeh for exact position continuity.
+
+## 2026-06-26 — Phase 3.8: explore map is a node-link constellation (dots), not a poster wall
+**Decision:** The user found the explore map "still cluttered… hard to see the actual constellation" — the
+poster sprites are big opaque rectangles that hide the edges and cluster structure (ironic for a thing called
+"Constellation"). So `Constellation` gains a **`variant` prop**: `"posters"` (the reveal spectacle, unchanged)
+vs **`"dots"`** (explore). In dots mode:
+- Nodes are **dots coloured by taste cluster** (`CLUSTER_COLORS` — a muted 6-hue palette; colour now *encodes*
+  which region of taste a film sits in). Recommendations are **larger, brighter dots inside the amber ring with
+  a soft amber glow** — the unmistakable stars.
+- **Titles sit under the dots**: recs always; every node once you **zoom in** past a threshold; plus whatever's
+  hovered (progressive disclosure — labelling all ~100 at once is worse clutter than the posters).
+- The **poster blooms in on hover** (an `IconLayer` for just the hovered node), so richness is on-demand and
+  the structure stays clean. `pickingRadius={8}` on the deck so the small dots are easy to hover/click.
+- **Edges + cluster labels turned up** (they were tuned faint to survive *under* posters; now they carry the
+  structure).
+**Why:** A node-link map of dots + lines is what a constellation actually is — it makes the clusters and the
+"why" connections legible, declutters the view, is truer to the metaphor, and is cheaper than a poster atlas
+(no per-node textures; fixing-motion-performance). Posters aren't lost — they live in the glass console, the
+rail, and the hover bloom. This **amends the SPEC §6.6 "posters supply all the colour, shell is monochrome"
+tenet**: the explore map now uses cluster colour as a meaningful encoding; amber stays reserved for recs/"why";
+the rest of the shell stays monochrome.
+**Affects:** SPEC §6 note + §6.6 amendment; `frontend/components/Constellation.tsx` (`variant` prop,
+`CLUSTER_COLORS`, dot/glow/hover-poster/title layers, brighter edges/labels, `pickingRadius`),
+`ConstellationView.tsx` (explore passes `variant="dots"`; Legend copy → "colour = a region of your taste ·
+hover for the poster"). Reveal still uses `variant="posters"`. Verified via Playwright: dots map renders with
+visible cluster structure, hover blooms the poster, zoom-in reveals all titles — zero page errors; tsc + lint
++ build clean. **Easy follow-ups if wanted:** cluster-colour swatches in the genre/cluster Filters; tuning ring
+density; making the reveal dots too (currently kept as posters for the wow).

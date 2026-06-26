@@ -10,6 +10,19 @@ import type { Cluster, GraphNode, GraphPayload, Recommendation } from "@/lib/typ
 const LEADER: [number, number, number] = [242, 240, 234];
 const BEAM: [number, number, number] = [232, 195, 106];
 
+// Muted, cinematic per-cluster hues — in dots mode, colour encodes a *region of taste*.
+// Amber stays reserved for recommendations + "why" edges, so it's deliberately absent here.
+const CLUSTER_COLORS: [number, number, number][] = [
+  [108, 142, 178], // steel blue
+  [126, 170, 150], // sage
+  [196, 142, 158], // dusty rose
+  [170, 158, 120], // khaki
+  [150, 134, 180], // violet
+  [120, 176, 176], // teal
+];
+const clusterColor = (c: number): [number, number, number] =>
+  CLUSTER_COLORS[((c % CLUSTER_COLORS.length) + CLUSTER_COLORS.length) % CLUSTER_COLORS.length];
+
 // Strong ease-out (settle into place) — built-in easings are too weak (emil-design-eng).
 const easeOut = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
 const CRYSTALLIZE_MS = 1400;
@@ -31,6 +44,7 @@ interface Props {
   focusId: string | null;
   visible: (n: GraphNode) => boolean;
   animate?: boolean; // play the crystallization reveal on mount
+  variant?: "posters" | "dots"; // posters = the reveal spectacle; dots = the legible explore map
 }
 
 function prefersReducedMotion(): boolean {
@@ -71,6 +85,7 @@ export default function Constellation({
   focusId,
   visible,
   animate = true,
+  variant = "posters",
 }: Props) {
   const reduced = useMemo(() => prefersReducedMotion(), []);
   const willAnimate = animate && !reduced;
@@ -177,67 +192,173 @@ export default function Constellation({
   const worldScale = span / 620; // matches the fit zoom in initialView
   const bump = (n: GraphNode) => (n.id === hovered ? 1.7 : 1);
 
+  // Dots mode: label recs always, but reveal every title once you zoom in (progressive
+  // disclosure — labelling all ~100 nodes at once would be worse clutter than the posters).
+  const fitZoom = useMemo(() => initialView(payload.nodes).zoom, [payload.nodes]);
+  const zoomedIn = view.zoom > fitZoom + 2;
+
   const posTransition = {
     getPosition: { duration: willAnimate ? CRYSTALLIZE_MS : 0, easing: easeOut },
   };
 
-  const layers: Layer[] = [
-    // only the rare posterless node gets a dot — no circles beneath the posters
-    new ScatterplotLayer<GraphNode>({
-      id: "dots",
-      data: nodes.filter((n) => !n.poster_url),
-      getPosition: pos,
-      getRadius: (n) => sizeOf(n) * 0.5,
-      radiusUnits: "common",
-      radiusScale: worldScale,
-      radiusMinPixels: 2,
-      radiusMaxPixels: 150,
-      getFillColor: (n) => [...LEADER, isLit(n.id) ? 45 : 12],
-      transitions: posTransition,
-      updateTriggers: { getPosition: [settled], getFillColor: [active] },
-      pickable: false,
-    }),
-    // persistent amber ring marking every recommendation (the stars)
-    new ScatterplotLayer<GraphNode>({
-      id: "rec-rings",
-      data: recs,
-      getPosition: pos,
-      getRadius: (n) => sizeOf(n) * 0.62 * bump(n),
-      radiusUnits: "common",
-      radiusScale: worldScale,
-      radiusMinPixels: 9,
-      radiusMaxPixels: 210,
-      filled: false,
-      stroked: true,
-      getLineColor: (n) => [...BEAM, n.id === selectedId ? 235 : isLit(n.id) ? 150 : 60],
-      getLineWidth: (n) => (n.id === selectedId ? 2 : 1),
-      lineWidthUnits: "pixels",
-      transitions: { ...posTransition, getRadius: 160 },
-      updateTriggers: {
-        getPosition: [settled],
-        getRadius: [hovered],
-        getLineColor: [active, selectedId],
-      },
-      pickable: false,
-    }),
-    new IconLayer<GraphNode>({
-      id: "posters",
-      data: withPosters,
-      getIcon: (n) => ({ url: thumb(n.poster_url as string), width: 154, height: 231, id: n.id, mask: false }),
-      getPosition: pos,
-      getSize: (n) => sizeOf(n) * bump(n),
-      sizeUnits: "common",
-      sizeScale: worldScale,
-      sizeMinPixels: 12,
-      sizeMaxPixels: 340,
-      getColor: (n) => [255, 255, 255, isLit(n.id) ? 255 : n.type === "recommended" ? 90 : 55],
-      transitions: { ...posTransition, getSize: 160 },
-      updateTriggers: { getPosition: [settled], getSize: [hovered], getColor: [active] },
-      pickable: true,
-      onHover: (info) => setHovered((info.object as GraphNode | null)?.id ?? null),
-      onClick: (info) => onSelect((info.object as GraphNode | null)?.id ?? null),
-    }),
-  ];
+  // Amber ring marking every recommendation (the stars) — shared by both variants.
+  const recRings = new ScatterplotLayer<GraphNode>({
+    id: "rec-rings",
+    data: recs,
+    getPosition: pos,
+    getRadius: (n) => sizeOf(n) * 0.62 * bump(n),
+    radiusUnits: "common",
+    radiusScale: worldScale,
+    radiusMinPixels: 9,
+    radiusMaxPixels: 210,
+    filled: false,
+    stroked: true,
+    getLineColor: (n) => [...BEAM, n.id === selectedId ? 235 : isLit(n.id) ? 150 : 60],
+    getLineWidth: (n) => (n.id === selectedId ? 2 : 1),
+    lineWidthUnits: "pixels",
+    transitions: { ...posTransition, getRadius: 160 },
+    updateTriggers: {
+      getPosition: [settled],
+      getRadius: [hovered],
+      getLineColor: [active, selectedId],
+    },
+    pickable: false,
+  });
+
+  const layers: Layer[] = [];
+
+  if (variant === "dots") {
+    // Colour = taste cluster; recommendations are larger, ringed, glowing stars. Posters
+    // stay hidden until you hover a node, so the *structure* — clusters and "why" edges —
+    // is finally legible (and dots are far cheaper than a poster atlas).
+    const seeds = nodes.filter((n) => n.type !== "recommended");
+    const hoveredNode = hovered ? nodeById.get(hovered) ?? null : null;
+
+    const labelMap = new Map<string, GraphNode>();
+    for (const r of recs) labelMap.set(r.id, r);
+    if (zoomedIn) for (const n of nodes) labelMap.set(n.id, n);
+    if (hoveredNode) labelMap.set(hoveredNode.id, hoveredNode);
+
+    layers.push(
+      // soft amber glow under each recommendation — subtle, so dense recs don't haze
+      new ScatterplotLayer<GraphNode>({
+        id: "rec-glow",
+        data: recs,
+        getPosition: pos,
+        getRadius: (n) => sizeOf(n) * 0.85 * bump(n),
+        radiusUnits: "common",
+        radiusScale: worldScale,
+        radiusMinPixels: 8,
+        radiusMaxPixels: 60,
+        getFillColor: (n) => [...BEAM, isLit(n.id) ? 16 : 6],
+        updateTriggers: { getRadius: [hovered], getFillColor: [active] },
+        pickable: false,
+      }),
+      // seed films — small cluster-coloured dots (the body of the constellation)
+      new ScatterplotLayer<GraphNode>({
+        id: "seed-dots",
+        data: seeds,
+        getPosition: pos,
+        getRadius: (n) => sizeOf(n) * 0.24 * bump(n),
+        radiusUnits: "common",
+        radiusScale: worldScale,
+        radiusMinPixels: 2,
+        radiusMaxPixels: 18,
+        getFillColor: (n) => [...clusterColor(n.cluster), isLit(n.id) ? 210 : 60],
+        updateTriggers: { getRadius: [hovered], getFillColor: [active] },
+        pickable: true,
+        onHover: (info) => setHovered((info.object as GraphNode | null)?.id ?? null),
+        onClick: (info) => onSelect((info.object as GraphNode | null)?.id ?? null),
+      }),
+      // recommendations — bigger, brighter cluster-coloured dots inside the amber ring
+      new ScatterplotLayer<GraphNode>({
+        id: "rec-dots",
+        data: recs,
+        getPosition: pos,
+        getRadius: (n) => sizeOf(n) * 0.36 * bump(n),
+        radiusUnits: "common",
+        radiusScale: worldScale,
+        radiusMinPixels: 3.5,
+        radiusMaxPixels: 34,
+        getFillColor: (n) => [...clusterColor(n.cluster), isLit(n.id) ? 255 : 150],
+        updateTriggers: { getRadius: [hovered], getFillColor: [active] },
+        pickable: true,
+        onHover: (info) => setHovered((info.object as GraphNode | null)?.id ?? null),
+        onClick: (info) => onSelect((info.object as GraphNode | null)?.id ?? null),
+      }),
+      recRings,
+      // the poster blooms in only for the hovered node (progressive disclosure)
+      new IconLayer<GraphNode>({
+        id: "hover-poster",
+        data: hoveredNode?.poster_url ? [hoveredNode] : [],
+        getIcon: (n) => ({ url: thumb(n.poster_url as string), width: 154, height: 231, id: n.id, mask: false }),
+        getPosition: pos,
+        getSize: (n) => sizeOf(n) * 1.7,
+        sizeUnits: "common",
+        sizeScale: worldScale,
+        sizeMinPixels: 44,
+        sizeMaxPixels: 340,
+        getColor: [255, 255, 255, 255],
+        pickable: false,
+      }),
+      // titles under the dots — recs always, the rest on hover / when zoomed in
+      new TextLayer<GraphNode>({
+        id: "titles",
+        data: [...labelMap.values()],
+        getPosition: pos,
+        getText: (n) => (n.title.length > 26 ? n.title.slice(0, 25) + "…" : n.title),
+        getSize: 11,
+        sizeUnits: "pixels",
+        getColor: (n) => [...LEADER, isLit(n.id) ? 225 : 120],
+        getPixelOffset: (n) => [0, n.type === "recommended" ? 20 : 13],
+        getTextAnchor: "middle",
+        getAlignmentBaseline: "top",
+        fontFamily: "monospace",
+        characterSet: "auto",
+        background: true,
+        getBackgroundColor: [8, 9, 11, 175],
+        backgroundPadding: [6, 3, 6, 3],
+        updateTriggers: { getColor: [active], getText: [zoomedIn] },
+        pickable: false,
+      }),
+    );
+  } else {
+    layers.push(
+      // only the rare posterless node gets a dot — no circles beneath the posters
+      new ScatterplotLayer<GraphNode>({
+        id: "dots",
+        data: nodes.filter((n) => !n.poster_url),
+        getPosition: pos,
+        getRadius: (n) => sizeOf(n) * 0.5,
+        radiusUnits: "common",
+        radiusScale: worldScale,
+        radiusMinPixels: 2,
+        radiusMaxPixels: 150,
+        getFillColor: (n) => [...LEADER, isLit(n.id) ? 45 : 12],
+        transitions: posTransition,
+        updateTriggers: { getPosition: [settled], getFillColor: [active] },
+        pickable: false,
+      }),
+      recRings,
+      new IconLayer<GraphNode>({
+        id: "posters",
+        data: withPosters,
+        getIcon: (n) => ({ url: thumb(n.poster_url as string), width: 154, height: 231, id: n.id, mask: false }),
+        getPosition: pos,
+        getSize: (n) => sizeOf(n) * bump(n),
+        sizeUnits: "common",
+        sizeScale: worldScale,
+        sizeMinPixels: 12,
+        sizeMaxPixels: 340,
+        getColor: (n) => [255, 255, 255, isLit(n.id) ? 255 : n.type === "recommended" ? 90 : 55],
+        transitions: { ...posTransition, getSize: 160 },
+        updateTriggers: { getPosition: [settled], getSize: [hovered], getColor: [active] },
+        pickable: true,
+        onHover: (info) => setHovered((info.object as GraphNode | null)?.id ?? null),
+        onClick: (info) => onSelect((info.object as GraphNode | null)?.id ?? null),
+      }),
+    );
+  }
 
   // Edges, "why" edges, labels, and the selected halo come in only once settled — so the
   // crystallization is clean posters flying home, not a tangle of lines.
@@ -250,6 +371,9 @@ export default function Constellation({
       ? rec.because.filter((b) => visibleIds.has(b.id)).map((b) => ({ from: rec.id, to: b.id, w: b.contribution }))
       : [];
     const labelled = payload.clusters.filter((c) => c.label);
+    // Posters used to smother the edges + cluster labels; in dots mode turn them up so
+    // the structure they describe is actually visible.
+    const edgeBase = variant === "dots" ? 18 : 7;
 
     layers.push(
       new TextLayer<Cluster>({
@@ -257,9 +381,9 @@ export default function Constellation({
         data: labelled,
         getPosition: (c) => c.centroid,
         getText: (c) => (c.label ?? "").toUpperCase(),
-        getSize: 12,
+        getSize: variant === "dots" ? 13 : 12,
         sizeUnits: "pixels",
-        getColor: [...LEADER, 55],
+        getColor: [...LEADER, variant === "dots" ? 95 : 55],
         fontFamily: "monospace",
         getTextAnchor: "middle",
         characterSet: "auto",
@@ -270,7 +394,10 @@ export default function Constellation({
         data: simEdges,
         getSourcePosition: (e) => posId(e.source),
         getTargetPosition: (e) => posId(e.target),
-        getColor: (e) => [...LEADER, isLit(e.source) && isLit(e.target) ? 24 + e.weight * 110 : 7],
+        getColor: (e) => [
+          ...LEADER,
+          isLit(e.source) && isLit(e.target) ? 24 + e.weight * 110 : edgeBase,
+        ],
         getWidth: (e) => 0.5 + e.weight * 1.3,
         widthUnits: "pixels",
         transitions: { getColor: 200 },
@@ -315,6 +442,7 @@ export default function Constellation({
       views={new OrthographicView({ id: "ortho", flipY: true })}
       viewState={view}
       controller
+      pickingRadius={8}
       onViewStateChange={(e) => setView(e.viewState as ViewState)}
       getCursor={({ isHovering }) => (isHovering ? "pointer" : "grab")}
       onClick={(info) => {

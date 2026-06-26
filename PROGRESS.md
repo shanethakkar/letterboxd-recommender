@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-06-26 · Phase 3.7 (liquid-glass handoff) complete — next is Phase 4 (SSE + four-act pipeline animation)_
+_Last updated: 2026-06-26 · Phase 3.8 (dots constellation) complete — next is Phase 4 (SSE + four-act pipeline animation)_
 
 ## Phase 0 — Backend skeleton
 - [x] Project scaffolding: `.gitignore`, `.env` (+ `.env.example`), `CLAUDE.md`, `PROGRESS.md`, `DECISIONS.md`
@@ -159,6 +159,16 @@ _Last updated: 2026-06-26 · Phase 3.7 (liquid-glass handoff) complete — next 
     `constellation-recede`. Deleted `RecommendationsTable.tsx` + the `/glass-proto` route.
   - Verified (Playwright): reveal → recede → glass → explore → back, plus a reduced-motion run — **zero page
     errors**. tsc + lint + `next build` clean.
+- [x] **Phase 3.8 — explore map is a node-link constellation (dots), not a poster wall (user feedback)**
+  - User: explore "still cluttered… hard to see the actual constellation." Added a `variant` prop to
+    `Constellation`: **`posters`** (reveal, unchanged) vs **`dots`** (explore). Dots are **coloured by taste
+    cluster** (`CLUSTER_COLORS`, muted 6-hue); recs are larger **amber-ringed, glowing stars**; **titles
+    under the dots** (recs always, all on zoom-in, plus hovered); the **poster blooms on hover**;
+    `pickingRadius={8}` makes small dots easy to hit. Edges + cluster labels turned back up.
+  - Amends the §6.6 monochrome tenet (colour now encodes cluster in the explore map; amber still reserved
+    for recs/"why"; shell stays monochrome).
+  - Verified (Playwright): visible cluster structure, hover-poster bloom (Uncut Gems), zoom-in reveals all
+    titles — zero page errors. tsc + lint + build clean.
 - Next: Phase 4 — async job + SSE; stream the reveal during the *real* build (posters cascade in →
   crystallize → recede), bind the four-act animation to live phase events.
 
