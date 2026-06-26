@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-06-25 · Current phase: 3 complete — next is Phase 4 (SSE + four-act pipeline animation)_
+_Last updated: 2026-06-26 · Phase 3.7 (liquid-glass handoff) complete — next is Phase 4 (SSE + four-act pipeline animation)_
 
 ## Phase 0 — Backend skeleton
 - [x] Project scaffolding: `.gitignore`, `.env` (+ `.env.example`), `CLAUDE.md`, `PROGRESS.md`, `DECISIONS.md`
@@ -145,8 +145,22 @@ _Last updated: 2026-06-25 · Current phase: 3 complete — next is Phase 4 (SSE 
     an opt-in **"Explore the constellation"** mode (back button). `animate` flag; removed grey backing
     circles. Table is also the no-WebGL fallback (deleted RankedList).
   - Verified (Playwright): reveal → table → explore. tsc+lint+build clean; 44 backend tests pass.
+- [x] **Phase 3.7 — liquid-glass handoff: the constellation recedes, recs ride on glass**
+  - User brainstorm → static prototype (`/glass-proto`) approved → wired into the app. The recs now sit on
+    a warm frosted **glass console** (`RecommendationsConsole`) floating over the constellation, which has
+    **receded into a defocused bokeh background** (`GlassBackground`: a static, blurred, drifting poster
+    field + projector beams + scrim).
+  - Flow: **reveal** (crystallize) → the same canvas **recedes** (~0.9s CSS blur-out, then the WebGL
+    unmounts) → **glass** → opt-in **explore** (live map) with a back button. One `Constellation` instance
+    kept mounted reveal→recede (keyed, no re-crystallize); blur masks the swap. `prefers-reduced-motion` →
+    straight to glass.
+  - Perf guardrail held: **no live WebGL behind `backdrop-filter`** — the steady-state background is cheap
+    static `<img>` bokeh. Promoted `.glass`/`.bokeh`/`.glass-card` into `globals.css` + added
+    `constellation-recede`. Deleted `RecommendationsTable.tsx` + the `/glass-proto` route.
+  - Verified (Playwright): reveal → recede → glass → explore → back, plus a reduced-motion run — **zero page
+    errors**. tsc + lint + `next build` clean.
 - Next: Phase 4 — async job + SSE; stream the reveal during the *real* build (posters cascade in →
-  crystallize), bind the four-act animation to live phase events.
+  crystallize → recede), bind the four-act animation to live phase events.
 
 ## Phase 3 retro (what I learned)
 - The installed skills paid off here: `frontend-design` shaped the cinematic monochrome shell,
@@ -154,6 +168,17 @@ _Last updated: 2026-06-25 · Current phase: 3 complete — next is Phase 4 (SSE 
   `fixing-motion-performance` thinking drove the w92 atlas. `webapp-testing`/Playwright gave real
   screenshot evidence (incl. confirming WebGL works headless with SwiftShader flags).
 - deck.gl + Next 16 + React 19 work together; the one gotcha was the icon-atlas texture-size limit.
+
+## Phase 3.7 retro (what I learned)
+- Prototyping the look on a throwaway route (`/glass-proto`) before touching the real flow was the right
+  call — the user could react to the actual feel, and promoting proven components was low-risk.
+- The hard part was *legibility vs see-through*: glass over a busy poster field only works if the bokeh is
+  defocused enough and the scrim is dark enough that text stays crisp. Tuned by screenshot, not by guessing.
+- Keeping ONE `Constellation` mounted across reveal→recede (via a stable React `key`) avoids a
+  re-crystallize flash; `emil-design-eng`'s "blur masks an imperfect transition" is exactly why the
+  live-canvas → static-bokeh swap is invisible.
+- Honoured the perf guardrail by construction: the steady-state background is static `<img>`s, so
+  `backdrop-filter` never samples a live WebGL canvas.
 
 ## Phase 4 — SSE + pipeline intro
 - [ ] Job endpoint + SSE; four-act animation; crystallization tween

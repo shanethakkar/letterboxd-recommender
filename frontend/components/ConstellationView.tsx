@@ -9,7 +9,8 @@ import type { GraphNode, GraphPayload } from "@/lib/types";
 import { hasWebGL } from "@/lib/webgl";
 import DetailPanel from "./DetailPanel";
 import Filters, { type FilterState } from "./Filters";
-import RecommendationsTable from "./RecommendationsTable";
+import GlassBackground from "./GlassBackground";
+import RecommendationsConsole from "./RecommendationsConsole";
 import RecRail from "./RecRail";
 
 const Constellation = dynamic(() => import("./Constellation"), { ssr: false });
@@ -21,7 +22,11 @@ const ALL_VISIBLE: FilterState = {
   genre: null,
 };
 
-type Mode = "reveal" | "table" | "explore";
+// reveal → (recede) → glass ↔ explore
+type Mode = "reveal" | "glass" | "explore";
+
+const REVEAL_MS = 2800; // crystallize, then hand off to the glass console
+const RECEDE_MS = 900; // the live canvas blurs out, then unmounts (matches .constellation-recede)
 
 function reducedMotion() {
   return (
@@ -34,6 +39,7 @@ export default function ConstellationView({ username }: { username: string }) {
   const [payload, setPayload] = useState<GraphPayload | null>(null);
   const [error, setError] = useState<{ status: number; message: string } | null>(null);
   const [mode, setMode] = useState<Mode>("reveal");
+  const [recedeCanvas, setRecedeCanvas] = useState(false); // live canvas still mounted, blurring out
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(ALL_VISIBLE);
@@ -56,13 +62,21 @@ export default function ConstellationView({ username }: { username: string }) {
     };
   }, [username]);
 
-  // Once the data lands, the constellation crystallizes, then hands off to the table.
-  // (No WebGL → the render below shows the table directly, no reveal.)
+  // Reveal → glass: the crystallized map recedes (blurs out) while the glass console
+  // rises over it; once the recede finishes we unmount the WebGL canvas so the steady
+  // state is just the cheap static bokeh + glass (no live WebGL behind backdrop-filter).
+  const handoff = useCallback(() => {
+    setMode("glass");
+    if (reducedMotion()) return; // no recede; the reveal canvas simply isn't rendered in glass
+    setRecedeCanvas(true);
+    window.setTimeout(() => setRecedeCanvas(false), RECEDE_MS);
+  }, []);
+
   useEffect(() => {
     if (!payload || mode !== "reveal" || !webgl) return;
-    const t = setTimeout(() => setMode("table"), reducedMotion() ? 500 : 2800);
+    const t = setTimeout(handoff, reducedMotion() ? 500 : REVEAL_MS);
     return () => clearTimeout(t);
-  }, [payload, mode, webgl]);
+  }, [payload, mode, webgl, handoff]);
 
   const visible = useCallback(
     (n: GraphNode) =>
@@ -74,6 +88,13 @@ export default function ConstellationView({ username }: { username: string }) {
 
   const genres = useMemo(
     () => Array.from(new Set((payload?.nodes ?? []).flatMap((n) => n.genres))).sort(),
+    [payload],
+  );
+
+  // Recs come first in the node list, so this is recs-then-seeds — the brightest
+  // posters land in the bokeh field.
+  const posters = useMemo(
+    () => (payload?.nodes ?? []).map((n) => n.poster_url).filter((u): u is string => !!u),
     [payload],
   );
 
@@ -91,73 +112,112 @@ export default function ConstellationView({ username }: { username: string }) {
   if (error) return <ErrorScreen username={username} error={error} />;
   if (!payload) return <LoadingScreen username={username} />;
 
-  if (mode === "table" || !webgl) {
+  // No WebGL: skip the reveal entirely — straight to the glass console (pure CSS,
+  // so it still looks the part), with no "explore" option.
+  if (!webgl) {
     return (
-      <RecommendationsTable
-        payload={payload}
-        canExplore={webgl}
-        onExplore={() => setMode("explore")}
-      />
-    );
-  }
-
-  if (mode === "reveal") {
-    return (
-      <main
-        className="atmosphere relative h-screen w-screen cursor-pointer overflow-hidden"
-        onClick={() => setMode("table")}
-      >
-        <Constellation
-          payload={payload}
-          animate
-          selectedId={null}
-          onSelect={() => {}}
-          focusId={null}
-          visible={() => true}
-        />
-        <div className="pointer-events-none absolute inset-x-0 bottom-10 z-20 text-center">
-          <p className="font-mono text-[11px] uppercase tracking-[0.35em] text-dim">
-            crystallising your taste
-          </p>
-          <p className="mt-2 font-mono text-[10px] text-dim/60">tap to skip</p>
-        </div>
+      <main className="atmosphere relative min-h-screen overflow-hidden">
+        <RecommendationsConsole payload={payload} canExplore={false} onExplore={() => {}} />
       </main>
     );
   }
 
-  // explore
+  const showRevealCanvas = mode === "reveal" || (mode === "glass" && recedeCanvas);
+
   const selectedNode = selectedId ? nodeById.get(selectedId) ?? null : null;
   const selectedRec =
     selectedNode?.type === "recommended"
       ? payload.recommendations.find((r) => r.id === selectedId) ?? null
       : null;
 
+  // Glass scrolls (the console is tall); reveal/explore are fixed full-screen.
+  const mainClass =
+    mode === "glass"
+      ? "atmosphere relative min-h-screen overflow-x-hidden"
+      : `atmosphere relative h-screen w-screen overflow-hidden${mode === "reveal" ? " cursor-pointer" : ""}`;
+
   return (
-    <main className="atmosphere relative h-screen w-screen overflow-hidden">
-      <Constellation
-        payload={payload}
-        animate={false}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        focusId={focusId}
-        visible={visible}
-      />
-      <ExploreHeader payload={payload} onBack={() => setMode("table")} />
-      <Filters clusters={payload.clusters} genres={genres} state={filters} setState={setFilters} />
-      <Legend />
-      <RecRail
-        recommendations={payload.recommendations}
-        nodeById={nodeById}
-        selectedId={selectedId}
-        onSelect={selectFromRail}
-      />
-      {selectedNode && (
-        <DetailPanel
-          node={selectedNode}
-          recommendation={selectedRec}
-          onClose={() => setSelectedId(null)}
-          onSelectSeed={selectFromRail}
+    <main className={mainClass} onClick={mode === "reveal" ? handoff : undefined}>
+      {/* Receded constellation (the glass background) — present once we hand off. */}
+      {mode === "glass" && <GlassBackground key="glass-bg" posters={posters} />}
+
+      {/* The crystallizing canvas: full-screen in reveal, then blurs out as it recedes.
+          Same element across reveal→recede (keyed) so it never remounts/re-crystallizes. */}
+      {showRevealCanvas && (
+        <div
+          key="reveal-canvas"
+          className={`fixed inset-0 z-[5] ${
+            mode === "glass" && recedeCanvas ? "constellation-recede" : ""
+          }`}
+        >
+          <Constellation
+            payload={payload}
+            animate
+            selectedId={null}
+            onSelect={() => {}}
+            focusId={null}
+            visible={() => true}
+          />
+        </div>
+      )}
+
+      {/* The recommendations, on glass. */}
+      {mode === "glass" && (
+        <RecommendationsConsole
+          key="console"
+          payload={payload}
+          canExplore
+          onExplore={() => setMode("explore")}
         />
+      )}
+
+      {/* Reveal caption. */}
+      {mode === "reveal" && (
+        <div
+          key="caption"
+          className="pointer-events-none absolute inset-x-0 bottom-10 z-20 text-center"
+        >
+          <p className="font-mono text-[11px] uppercase tracking-[0.35em] text-dim">
+            crystallising your taste
+          </p>
+          <p className="mt-2 font-mono text-[10px] text-dim/60">tap to skip</p>
+        </div>
+      )}
+
+      {/* Explore: the live, interactive map brought forward. */}
+      {mode === "explore" && (
+        <div key="explore" className="absolute inset-0">
+          <Constellation
+            payload={payload}
+            animate={false}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            focusId={focusId}
+            visible={visible}
+          />
+          <ExploreHeader payload={payload} onBack={() => setMode("glass")} />
+          <Filters
+            clusters={payload.clusters}
+            genres={genres}
+            state={filters}
+            setState={setFilters}
+          />
+          <Legend />
+          <RecRail
+            recommendations={payload.recommendations}
+            nodeById={nodeById}
+            selectedId={selectedId}
+            onSelect={selectFromRail}
+          />
+          {selectedNode && (
+            <DetailPanel
+              node={selectedNode}
+              recommendation={selectedRec}
+              onClose={() => setSelectedId(null)}
+              onSelectSeed={selectFromRail}
+            />
+          )}
+        </div>
       )}
     </main>
   );

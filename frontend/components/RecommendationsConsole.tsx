@@ -31,7 +31,7 @@ function sortRecs(recs: Recommendation[], key: SortKey): Recommendation[] {
   });
 }
 
-export default function RecommendationsTable({
+export default function RecommendationsConsole({
   payload,
   onExplore,
   canExplore = true,
@@ -41,7 +41,7 @@ export default function RecommendationsTable({
   canExplore?: boolean;
 }) {
   const [sort, setSort] = useState<SortKey>("match");
-  const [genre, setGenre] = useState<string>("");
+  const [genre, setGenre] = useState("");
 
   const genres = useMemo(
     () => Array.from(new Set(payload.recommendations.flatMap((r) => r.genres))).sort(),
@@ -56,70 +56,75 @@ export default function RecommendationsTable({
   }, [payload.recommendations, genre, sort]);
 
   return (
-    <main className="atmosphere min-h-screen">
-      <div className="mx-auto max-w-3xl px-5 pb-24 pt-8">
-        {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="relative z-10 mx-auto max-w-2xl px-4 py-10 sm:py-16">
+      <div className="rise glass overflow-hidden rounded-[1.75rem]">
+        {/* header */}
+        <header className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 px-6 pb-5 pt-6">
           <div>
-            <Link href="/" className="font-mono text-xs text-dim transition hover:text-leader">
+            <Link
+              href="/"
+              className="font-mono text-[11px] uppercase tracking-[0.3em] text-dim transition hover:text-leader"
+            >
               ← home
             </Link>
-            <h1 className="mt-2 font-display text-3xl font-semibold text-leader">
-              Recommendations
-            </h1>
-            <p className="mt-1 font-mono text-xs text-dim">
-              for @{payload.username} · {payload.stats.rated} rated · avg{" "}
+            <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.3em] text-dim">
+              @{payload.username} · {payload.stats.rated} rated · avg{" "}
               {payload.stats.avg_rating.toFixed(2)}
             </p>
+            <h1 className="mt-1.5 font-display text-[2rem] font-semibold leading-none text-leader">
+              Recommendations
+            </h1>
           </div>
           {canExplore && (
             <button
+              type="button"
               onClick={onExplore}
-              className="rounded-full border border-beam/30 bg-beam/10 px-4 py-2 font-display text-sm text-beam transition hover:bg-beam/20"
+              className="rounded-full border border-beam/30 bg-beam/10 px-4 py-2 font-display text-sm text-beam shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-150 ease-out hover:bg-beam/20 active:scale-[0.97]"
             >
               ✦ Explore the constellation
             </button>
           )}
-        </div>
+        </header>
 
-        {/* Controls */}
-        <div className="mt-6 flex flex-wrap items-center gap-2 border-y border-white/10 py-3">
-          <span className="font-mono text-[11px] uppercase tracking-widest text-dim">sort</span>
-          <Select label="Sort by" value={sort} onChange={(v) => setSort(v as SortKey)}>
+        {/* controls */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-6 py-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-dim">sort</span>
+          <GlassSelect label="Sort by" value={sort} onChange={(v) => setSort(v as SortKey)}>
             {SORTS.map((s) => (
               <option key={s.key} value={s.key}>
                 {s.label}
               </option>
             ))}
-          </Select>
-          <span className="ml-2 font-mono text-[11px] uppercase tracking-widest text-dim">
-            genre
-          </span>
-          <Select label="Filter by genre" value={genre} onChange={setGenre}>
+          </GlassSelect>
+          <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.25em] text-dim">genre</span>
+          <GlassSelect label="Filter by genre" value={genre} onChange={setGenre}>
             <option value="">all</option>
             {genres.map((g) => (
               <option key={g} value={g}>
                 {g}
               </option>
             ))}
-          </Select>
-          <span className="ml-auto font-mono text-[11px] text-dim">{recs.length} films</span>
+          </GlassSelect>
+          <span className="ml-auto font-mono text-[10px] text-dim">{recs.length} films</span>
         </div>
 
-        {/* Cards */}
-        <ol className="mt-4 space-y-3">
+        {/* cards */}
+        <ol className="space-y-3 p-4 sm:p-5">
           {recs.map((r, i) => (
-            <RecCard key={r.id} rec={r} rank={i + 1} />
+            <Card key={r.id} rec={r} rank={i + 1} index={i} />
           ))}
         </ol>
       </div>
-    </main>
+    </div>
   );
 }
 
-function RecCard({ rec, rank }: { rec: Recommendation; rank: number }) {
+function Card({ rec, rank, index }: { rec: Recommendation; rank: number; index: number }) {
   return (
-    <li className="rise flex gap-4 rounded-xl border border-white/10 bg-panel/50 p-3 transition hover:border-white/20">
+    <li
+      className="rise glass-card flex gap-4 rounded-2xl p-3"
+      style={{ animationDelay: `${0.05 + index * 0.04}s` }}
+    >
       {rec.poster_url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -128,10 +133,10 @@ function RecCard({ rec, rank }: { rec: Recommendation; rank: number }) {
           width={92}
           height={138}
           loading="lazy"
-          className="h-[8.2rem] w-[5.5rem] flex-none rounded-md object-cover ring-1 ring-white/10"
+          className="h-[8.4rem] w-[5.6rem] flex-none rounded-lg object-cover shadow-lg ring-1 ring-white/15"
         />
       ) : (
-        <div className="h-[8.2rem] w-[5.5rem] flex-none rounded-md bg-white/5" />
+        <div className="h-[8.4rem] w-[5.6rem] flex-none rounded-lg bg-white/5 ring-1 ring-white/10" />
       )}
 
       <div className="min-w-0 flex-1">
@@ -141,7 +146,7 @@ function RecCard({ rec, rank }: { rec: Recommendation; rank: number }) {
             {rec.title}
           </h2>
           {rec.year && <span className="flex-none font-mono text-xs text-dim">{rec.year}</span>}
-          <span className="ml-auto flex-none rounded-full bg-beam/15 px-2 py-0.5 font-mono text-xs text-beam">
+          <span className="ml-auto flex-none rounded-full bg-beam/15 px-2 py-0.5 font-mono text-xs text-beam ring-1 ring-beam/20">
             {rec.score.toFixed(2)} match
           </span>
         </div>
@@ -150,24 +155,24 @@ function RecCard({ rec, rank }: { rec: Recommendation; rank: number }) {
           {[rec.director, rec.runtime ? `${rec.runtime}m` : null].filter(Boolean).join(" · ")}
         </p>
 
-        {/* Review badges */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {rec.imdb_rating != null && <Badge label="IMDb" value={rec.imdb_rating.toFixed(1)} />}
           {rec.metascore != null && <Badge label="Meta" value={String(rec.metascore)} />}
-          {rec.rotten_tomatoes != null && (
-            <Badge label="RT" value={`${rec.rotten_tomatoes}%`} />
-          )}
+          {rec.rotten_tomatoes != null && <Badge label="RT" value={`${rec.rotten_tomatoes}%`} />}
           {rec.genres.slice(0, 3).map((g) => (
-            <span key={g} className="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[10px] text-dim">
+            <span
+              key={g}
+              className="rounded-full border border-white/10 px-2 py-0.5 font-mono text-[10px] text-dim"
+            >
               {g}
             </span>
           ))}
         </div>
 
-        {/* The "why" — our differentiator */}
+        {/* the "why" — our differentiator */}
         {rec.because.length > 0 && (
           <p className="mt-2.5 text-sm leading-snug">
-            <span className="font-mono text-[10px] uppercase tracking-widest text-beam/80">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-beam/80">
               because you rated{" "}
             </span>
             <span className="text-leader">{rec.because.map((b) => b.title).join(", ")}</span>
@@ -199,13 +204,13 @@ function RecCard({ rec, rank }: { rec: Recommendation; rank: number }) {
 
 function Badge({ label, value }: { label: string; value: string }) {
   return (
-    <span className="rounded border border-white/10 px-1.5 py-0.5 font-mono text-[10px] text-dim">
+    <span className="rounded border border-white/10 bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-dim">
       {label} <span className="text-leader">{value}</span>
     </span>
   );
 }
 
-function Select({
+function GlassSelect({
   label,
   value,
   onChange,
@@ -221,7 +226,7 @@ function Select({
       aria-label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="cursor-pointer rounded-full border border-white/10 bg-panel px-3 py-1 font-mono text-xs text-leader outline-none transition hover:border-beam/40 [&>option]:bg-panel"
+      className="cursor-pointer rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 font-mono text-xs text-leader outline-none backdrop-blur transition hover:border-beam/40 focus-visible:ring-2 focus-visible:ring-beam/40 [&>option]:bg-panel"
     >
       {children}
     </select>

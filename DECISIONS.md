@@ -231,3 +231,29 @@ artifact first. Verified via Playwright: reveal → table → explore.
 `frontend`: new `RecommendationsTable.tsx`, `ConstellationView.tsx` (reveal/table/explore modes),
 `Constellation.tsx` (animate prop, no dots), `types.ts`, deleted `RankedList.tsx`. **Still Phase 4:**
 streaming the reveal during the real build over SSE. Possible later tweak: drop the amber rec rings too.
+
+## 2026-06-26 — Phase 3.7: liquid-glass handoff — the constellation recedes, recs ride on glass
+**Decision:** The user proposed (and a static prototype at `/glass-proto` confirmed) unifying the two
+surfaces instead of swapping between them: the constellation **recedes into a defocused bokeh background**
+and the recommendations float above it on warm frosted **"liquid glass."** Flow is now **reveal → recede →
+glass ↔ explore**:
+1. **Reveal** crystallizes the map sharp (unchanged), then the *same* canvas **recedes** — a ~0.9s CSS
+   blur-out (`blur(0→22px)` + `scale(1.06)` + fade) — while the glass console rises over it. Once the
+   recede finishes the **WebGL canvas unmounts**.
+2. **Glass** (steady state): `RecommendationsConsole` (the card-list, now on a `.glass` console) over
+   `GlassBackground` (a `fixed`, blurred, slowly-drifting poster bokeh field + projector beams + scrim).
+3. **Explore** still brings the live interactive map forward, with a back button.
+**Why:** It resolves the wow-vs-utility tension — you *feel* the map without it competing with the recs —
+and stops discarding the crystallized constellation. **Perf guardrail (fixing-motion-performance):** never
+run live WebGL behind a `backdrop-filter`; the recede is a brief blur-out, then the steady-state background
+is a cheap **static** `<img>` bokeh field that `backdrop-filter` samples. **Craft (emil-design-eng):** one
+`Constellation` instance is kept mounted across reveal→recede (keyed, never remounts → no re-crystallize),
+and blur masks the swap to the bokeh so it reads as one continuous defocus. `prefers-reduced-motion` →
+straight to glass, no recede/drift.
+**Affects:** SPEC §6 (note revised); `frontend`: new `GlassBackground.tsx` + `RecommendationsConsole.tsx`,
+`ConstellationView.tsx` (reveal/glass/explore + `recedeCanvas`), `globals.css` (`.glass`/`.bokeh`/
+`.glass-card` promoted from the prototype + `constellation-recede` keyframes); deleted
+`RecommendationsTable.tsx` and the `/glass-proto` prototype route. `Constellation.tsx` unchanged (the
+recede is a CSS wrapper). Verified via Playwright: reveal → recede → glass → explore → back, plus a
+reduced-motion run, all with zero page errors. **Still Phase 4:** binding the reveal to real build progress
+over SSE; optionally snapshotting the actual crystallized canvas as the bokeh for exact position continuity.

@@ -189,14 +189,17 @@ Notes: `id` is a stable `tmdb:{id}` string. Recommended nodes carry `score`; wat
 
 ## 6. Frontend
 
-> **Phase 3.6 pivot (implemented) — the recommendations TABLE is the product.** A ranked, poster-forward
-> **card-list** is the primary surface: each rec shows poster, title/year, match score, **IMDb/Metacritic/RT**,
-> director, genres, the **"because you rated …"** (our differentiator, in amber), and TMDB + Letterboxd
-> links — sortable (match/IMDb/Meta/year) and genre-filterable. The **constellation is demoted to (a) the
-> crystallization *reveal*** on load (poster cloud → settled clusters, ease-out ~1.4s, then auto-hands off
-> to the table) **and (b) an opt-in "Explore the constellation"** interactive mode. The map there is
-> recommendation-first (recs = amber-ringed "stars"; their `because` seeds = dim context; no backing
-> circles). The table is also the no-WebGL fallback. SSE-streamed reveal stays Phase 4. See DECISIONS.
+> **Phase 3.6/3.7 (implemented) — recommendations on liquid glass, over a receded constellation.** A ranked,
+> poster-forward **card-list** is the product: each rec shows poster, title/year, match score, **IMDb/Metacritic/RT**,
+> director, genres, the **"because you rated …"** (our differentiator, in amber), and TMDB + Letterboxd links —
+> sortable (match/IMDb/Meta/year) and genre-filterable. **Phase 3.7** mounts that card-list on a warm **frosted
+> "liquid-glass" console** (`RecommendationsConsole`) floating over the constellation, which has **receded into a
+> defocused bokeh background** (`GlassBackground` — a static, blurred poster field; never live WebGL behind
+> `backdrop-filter`). The flow: **reveal** (poster cloud → settled clusters, ease-out ~1.4s) → the same canvas
+> **recedes** (blurs/dims/pushes back ~0.9s, then the WebGL unmounts) → **glass** (recs over the bokeh) → opt-in
+> **"Explore the constellation"** brings the live interactive map forward (recs = amber-ringed "stars"; `because`
+> seeds = dim context; no backing circles), with a back button. The glass console is also the no-WebGL fallback.
+> `prefers-reduced-motion` → straight to glass, no recede. SSE-streamed reveal stays Phase 4. See DECISIONS.
 
 ### 6.1 Routes
 - `/` — landing: username input, one-line pitch, a looping demo constellation.

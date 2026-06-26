@@ -76,3 +76,90 @@ body {
     animation: none;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   Liquid glass — the recommendations shell.  The constellation recedes into a
+   defocused bokeh background and the recs float above it on warm frosted glass.
+   Perf (fixing-motion-performance): the background is a STATIC blurred image
+   field, never a live WebGL canvas, so backdrop-filter stays cheap.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+/* Defocused constellation: blurred poster bokeh drifting slowly behind the glass. */
+@keyframes drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1.12);
+  }
+  50% {
+    transform: translate3d(-1.6%, -1.4%, 0) scale(1.16);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.12);
+  }
+}
+.bokeh {
+  animation: drift 52s ease-in-out infinite;
+  filter: blur(44px) saturate(1.5) brightness(1.05);
+  will-change: transform;
+}
+
+/* Liquid glass: frosted, warm-tinted, specular top edge, floats above the field. */
+.glass {
+  background: linear-gradient(180deg, rgba(24, 26, 33, 0.44), rgba(10, 11, 14, 0.56));
+  backdrop-filter: blur(28px) saturate(1.5);
+  -webkit-backdrop-filter: blur(28px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    /* specular top highlight */ 0 30px 80px -28px rgba(0, 0, 0, 0.85); /* float */
+}
+
+/* Card tiles inside the console: lighter glass that lifts toward you on hover. */
+.glass-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transition:
+    transform 220ms cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+  will-change: transform;
+}
+.glass-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(232, 195, 106, 0.32); /* warm amber edge on focus */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 20px 44px -20px rgba(0, 0, 0, 0.7);
+}
+/* The crystallized constellation receding into the background as the glass rises:
+   it blurs into mush exactly as the bokeh field fades in beneath it, so the swap
+   reads as one continuous defocus (emil-design-eng: blur masks the transition). */
+@keyframes constellation-recede {
+  from {
+    filter: blur(0) brightness(1);
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    filter: blur(22px) brightness(0.7);
+    transform: scale(1.06);
+    opacity: 0;
+  }
+}
+.constellation-recede {
+  animation: constellation-recede 900ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bokeh {
+    animation: none;
+  }
+  .glass-card:hover {
+    transform: none;
+  }
+  .constellation-recede {
+    animation: none;
+    opacity: 0;
+  }
+}
