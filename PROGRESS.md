@@ -80,6 +80,15 @@ _Last updated: 2026-06-25 · Current phase: 1 complete — next is Phase 2 (proj
     (ranking sound, breadth is the remaining lever). Real recs didn't regress (Donnie Brasco, Brick←
     Knives Out, Gangs of New York surfaced). 33 tests pass, ruff clean.
   - Further recall levers (later): 3-hop, taste-filtered discover, true collaborative filtering.
+- [x] **Recall round 2: taste-discover + TMDB caching + cap 500→3000**
+  - Added taste-filtered discover (`discover_by_genres`, 3rd candidate source) + Redis `get_movie`
+    caching (30-day TTL). Then found (harness) the **candidate cap was the dominant constraint**:
+    taste-discover gave 0 gain at cap 1500, but raising the cap to 3000 unlocked everything.
+  - **Measured: pool-recall 26%→74%, recall@20 20%→31%** (vs 13%/9% at the start). Rec quality
+    improved too (Layer Cake, Crooked House←Knives Out, The Night of the Hunter Meta 97, Donnie Brasco).
+    36 tests pass, ruff clean.
+  - Cost: ~3000 TMDB enrich calls per cold scrape (~1 min), amortized by caching in prod. Remaining
+    ~26% are taste "islands" → only collaborative filtering would push further (deferred, big lift).
 - Next: Phase 2 — UMAP projection, clusters, kNN edges, assemble the SPEC §5 graph payload.
 
 ## Phase 1 retro (what I learned)

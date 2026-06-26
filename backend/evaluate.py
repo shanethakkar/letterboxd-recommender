@@ -51,7 +51,7 @@ async def evaluate(
     redis = create_redis()
     memo: dict[int, Film] = {}
     async with httpx.AsyncClient(timeout=15.0) as http:
-        tmdb = create_tmdb_client(http)
+        tmdb = create_tmdb_client(http, redis)
         scrape = await scraper.scrape_user(username, redis)
         rated = scrape.rated()
         if not rated:

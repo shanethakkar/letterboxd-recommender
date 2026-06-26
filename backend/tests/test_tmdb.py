@@ -1,10 +1,11 @@
 """TMDBClient payload parsing — no network, via httpx.MockTransport."""
 
+import fakeredis.aioredis as fake_aioredis
 import httpx
 
 from backend.config import Settings
 from backend.models import Film
-from backend.tmdb import TMDBClient
+from backend.tmdb import TMDBClient, _top_genre_ids
 
 # Trimmed but structurally faithful TMDB `append_to_response` payload for Inception.
 SAMPLE = {
@@ -108,3 +109,59 @@ async def test_grow_candidate_pool_reaches_two_hops() -> None:
     assert {1, 2} <= ids  # hop 1: direct seed recommendations
     assert 99 in ids  # hop 2: reachable only via film 1's recommendations
     assert len(prov) == len(films)
+
+
+def test_top_genre_ids_maps_names_to_ids() -> None:
+    films = [
+        Film(tmdb_id=1, title="a", genres=["Crime", "Drama"]),
+        Film(tmdb_id=2, title="b", genres=["Crime"]),
+    ]
+    ids = _top_genre_ids(films, n=2)
+    assert ids[0] == 80  # Crime (most common) → TMDB id 80
+    assert set(ids) == {80, 18}  # + Drama (18)
+
+
+async def test_grow_candidate_pool_includes_taste_discover() -> None:
+    # The seed's genre drives a /discover query that returns film 500 (not in the rec graph).
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/3/discover/movie":
+            if "with_genres" in request.url.params:
+                return httpx.Response(200, json={"results": [{"id": 500}]})
+            return httpx.Response(200, json={"results": []})  # generic backfill
+        mid = int(request.url.path.rsplit("/", 1)[1])
+        return httpx.Response(
+            200,
+            json={
+                "id": mid,
+                "title": str(mid),
+                "vote_count": 1000,
+                "recommendations": {"results": []},
+                "similar": {"results": []},
+            },
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = TMDBClient(http, Settings(tmdb_api_key="k"))
+    seed = Film(tmdb_id=10, title="seed", genres=["Crime"], tmdb_recommendations=[1])
+
+    films, _ = await client.grow_candidate_pool([seed], set(), max_candidates=50)
+    ids = {f.tmdb_id for f in films}
+    assert 1 in ids  # rec-graph source
+    assert 500 in ids  # taste-filtered discover source
+
+
+async def test_get_movie_caches_in_redis() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json=SAMPLE)
+
+    redis = fake_aioredis.FakeRedis(decode_responses=True)
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = TMDBClient(http, Settings(tmdb_api_key="k"), redis=redis)
+
+    first = await client.get_movie(27205)
+    second = await client.get_movie(27205)
+    assert first.title == second.title == "Inception"
+    assert len(calls) == 1  # second call served from the Redis cache

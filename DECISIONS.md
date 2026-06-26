@@ -122,3 +122,20 @@ Out, Gangs of New York, Lost Highway←Mulholland Drive).
 **Affects:** SPEC §4.2 (2-hop pool) + §4.7 (result); `backend/tmdb.py` (`grow_candidate_pool`),
 `validate_recommender.py` + `evaluate.py` (use it; removed duplicated pool code). **Further recall
 levers (later):** 3-hop, taste-filtered discover, true collaborative filtering.
+
+## 2026-06-25 — Recall round 2: taste-discover + TMDB caching + cap 500→3000
+**Decision:** Add (1) **taste-filtered discover** (`discover_by_genres`: well-voted films in the user's
+top genres) as a 3rd candidate source; (2) **Redis caching of `get_movie`** responses (30-day TTL),
+threaded via `create_tmdb_client(http, redis)`; (3) raise the candidate cap **1500→3000**.
+**Why:** Chasing the recall ceiling the harness exposed. Findings (measured, @sthakkar): taste-discover
+alone gave **no** gain at cap 1500 — the cap was saturating and discarding reachable-but-weakly-connected
+favourites. Raising the cap to 3000 took **pool-recall 26%→74%, recall@20 20%→31%** (vs 13%/9% at the
+very start), and rec *quality improved* (surfaced Layer Cake, Crooked House←Knives Out, The Night of the
+Hunter (Meta 97), Donnie Brasco). So the cap — not the source mix — was the dominant lever; all three
+sources contribute once they fit. Caching is a production win (shared films across users/re-runs).
+**Cost:** up to ~3000 TMDB enrich calls per cold scrape (~1 min); amortized by caching in production
+(locally fakeredis is per-process so each run is cold). Remaining ~26% unreachable ≈ taste "islands" →
+collaborative filtering is the only bigger lever (deferred, large lift).
+**Affects:** SPEC §4.2 (3 sources, cap, caching) + §4.7 (result); `backend/tmdb.py`
+(`discover_by_genres`, genre map, get_movie cache, cap default), `app.py`/`validate_recommender.py`/
+`evaluate.py` (pass redis to `create_tmdb_client`).

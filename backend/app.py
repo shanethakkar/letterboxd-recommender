@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
     """Open shared clients on startup; close them on shutdown."""
     app.state.redis = cache.create_redis()
     app.state.http = httpx.AsyncClient(timeout=10.0)
-    app.state.tmdb = create_tmdb_client(app.state.http)
+    app.state.tmdb = create_tmdb_client(app.state.http, app.state.redis)
     try:
         yield
     finally:

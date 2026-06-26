@@ -38,7 +38,7 @@ async def test_evaluate_returns_valid_metrics_and_reaches_heldout(monkeypatch) -
         return result_obj
 
     monkeypatch.setattr(ev.scraper, "scrape_user", fake_scrape)
-    monkeypatch.setattr(ev, "create_tmdb_client", lambda http: _FakeTMDB())
+    monkeypatch.setattr(ev, "create_tmdb_client", lambda http, redis=None: _FakeTMDB())
     monkeypatch.setattr(ev, "create_redis", lambda: fake_aioredis.FakeRedis(decode_responses=True))
 
     result = await ev.evaluate("x", n_clusters=1, n_splits=2)

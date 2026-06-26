@@ -70,8 +70,8 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 ### 4.2 `tmdb.py`
 - Async client (httpx). Single batched call per film via `append_to_response`.
 - Extract: `genres[]`, `director`, `top_cast[5]`, `keywords[]`, `release_decade`, `original_language`, `runtime_bucket`, `poster_path`, `tmdb_recommendations[]`, `tmdb_similar[]`.
-- Candidate pool (`grow_candidate_pool`) = union of `recommendations`+`similar` for the user's top-rated seeds (+ acclaimed/popular `discover` backfill), **expanded a 2nd hop** from the strongest hop-1 candidates (recs-of-recs — reaches films no seed points to directly), capped at ~1500 by provenance, minus everything already logged. 2-hop + the raised cap ≈doubled held-out recall (13%→26%, see §4.7).
-- Also capture each film's `imdb_id` (top-level on `/movie/{id}` — free). A separate `omdb.py` then enriches the **top scoring candidates** with IMDb rating + Metacritic + Rotten Tomatoes (OMDb API), cached permanently in Redis. OMDb's 1,000/day free limit is why only the shortlist is enriched; with no OMDb key it's skipped (TMDB-only quality).
+- Candidate pool (`grow_candidate_pool`) draws from **three sources**: (1) the rec-graph — seeds' `recommendations`+`similar`; (2) **taste-filtered discover** — well-voted films in the user's top genres (`discover_by_genres`, reaches on-taste films the graph misses); (3) a generic acclaimed/popular `discover` backfill. It then **expands a 2nd hop** from the strongest hop-1 candidates (recs-of-recs), caps at ~3000 by provenance, and removes everything already logged. The cap is the dominant recall lever: 500→1500→3000 took held-out pool-recall 13%→26%→**74%** (see §4.7).
+- `get_movie` responses are **Redis-cached** (30-day TTL) so films shared across users/re-runs aren't refetched. Also capture each film's `imdb_id` (top-level on `/movie/{id}` — free). A separate `omdb.py` then enriches the **top scoring candidates** with IMDb rating + Metacritic + Rotten Tomatoes (OMDb API), cached permanently. OMDb's 1,000/day free limit is why only the shortlist is enriched; with no OMDb key it's skipped (TMDB-only quality).
 
 ### 4.3 `features.py`
 - Vector = concatenation of:
@@ -101,7 +101,7 @@ so the "watch it think" choreography is driven by actual progress, never faked.
 
 ### 4.7 `evaluate.py` (accuracy harness)
 - Leave-one-out: hold out a fraction of the user's highly-rated films, build the recommender from the rest (held-out films treated as unseen so they *can* be recommended), and measure **pool-recall@N** (held-out films reachable in the candidate pool) + **recall@K** (held-out films ranked into the top-K), averaged over splits. Compare models (e.g. `--clusters`) on the same splits.
-- Turns "more accurate" into a number. First finding (@sthakkar): pool-recall ≈ 13% → **candidate recall is the dominant ceiling**, not the ranking model; multi-centroid taste showed no gain (left opt-in). Acting on it, **2-hop expansion + a raised candidate cap doubled recall** (pool-recall 13%→26%, recall@20 9%→20%); recall@100 ≈ pool-recall, confirming ranking is sound and breadth is the remaining lever (further: 3-hop, taste-filtered discover, true CF).
+- Turns "more accurate" into a number. First finding (@sthakkar): pool-recall ≈ 13% → **candidate recall is the dominant ceiling**, not the ranking model; multi-centroid taste showed no gain (left opt-in). Acting on it: 2-hop expansion + taste-filtered discover + **raising the provenance cap (500→1500→3000)** took pool-recall **13%→26%→74%** and recall@20 9%→**31%** — the cap was the dominant constraint (it was discarding reachable but weakly-connected favourites). Rec *quality* improved alongside (more well-reviewed on-taste options). Remaining ~26% are taste "islands"; bigger gains would need collaborative filtering. Note: multi-centroid and taste-discover each showed no gain *until* the cap was raised — measure, don't assume.
 
 ---
 

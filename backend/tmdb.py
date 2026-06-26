@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import Counter
 from collections.abc import Iterable
 from typing import Any
 
 import httpx
+import redis.asyncio as aioredis
 
 from backend.config import Settings, get_settings
 from backend.models import Film
@@ -23,6 +25,38 @@ logger = logging.getLogger(__name__)
 
 _APPEND = "credits,keywords,recommendations,similar"
 _TOP_CAST = 5
+_MOVIE_CACHE_KEY = "tmdb:movie:{tmdb_id}"
+_MOVIE_TTL = 60 * 60 * 24 * 30  # 30 days — TMDB metadata drifts slowly
+
+# TMDB's fixed movie-genre ids (static; used to query /discover by the user's top genres).
+_GENRE_NAME_TO_ID: dict[str, int] = {
+    "Action": 28,
+    "Adventure": 12,
+    "Animation": 16,
+    "Comedy": 35,
+    "Crime": 80,
+    "Documentary": 99,
+    "Drama": 18,
+    "Family": 10751,
+    "Fantasy": 14,
+    "History": 36,
+    "Horror": 27,
+    "Music": 10402,
+    "Mystery": 9648,
+    "Romance": 10749,
+    "Science Fiction": 878,
+    "TV Movie": 10770,
+    "Thriller": 53,
+    "War": 10752,
+    "Western": 37,
+}
+
+
+def _top_genre_ids(seed_films: Iterable[Film], n: int = 3) -> list[int]:
+    """The user's most common genres (among seeds) → TMDB genre ids for /discover."""
+    counts = Counter(g for f in seed_films for g in f.genres)
+    ids = [_GENRE_NAME_TO_ID[name] for name, _ in counts.most_common() if name in _GENRE_NAME_TO_ID]
+    return ids[:n]
 
 
 class TMDBClient:
@@ -32,12 +66,24 @@ class TMDBClient:
     tests can supply a `MockTransport` (no network).
     """
 
-    def __init__(self, http_client: httpx.AsyncClient, settings: Settings) -> None:
+    def __init__(
+        self,
+        http_client: httpx.AsyncClient,
+        settings: Settings,
+        redis: aioredis.Redis | None = None,
+    ) -> None:
         self._client = http_client
         self._settings = settings
+        self._redis = redis
 
     async def get_movie(self, tmdb_id: int) -> Film:
-        """Fetch and parse one film by its TMDB id."""
+        """Fetch and parse one film by its TMDB id (Redis-cached when available)."""
+        key = _MOVIE_CACHE_KEY.format(tmdb_id=tmdb_id)
+        if self._redis is not None:
+            cached = await self._redis.get(key)
+            if cached is not None:
+                return Film.model_validate_json(cached)
+
         resp = await self._client.get(
             f"{self._settings.tmdb_api_base}/movie/{tmdb_id}",
             params={
@@ -46,7 +92,11 @@ class TMDBClient:
             },
         )
         resp.raise_for_status()
-        return self._parse(resp.json())
+        film = self._parse(resp.json())
+
+        if self._redis is not None:
+            await self._redis.set(key, film.model_dump_json(), ex=_MOVIE_TTL)
+        return film
 
     async def get_movies(self, ids: Iterable[int], *, concurrency: int = 8) -> dict[int, Film]:
         """Fetch many films concurrently (bounded). Failures are logged and skipped."""
@@ -89,24 +139,55 @@ class TMDBClient:
             ids.extend(r["id"] for r in resp.json().get("results", []) if "id" in r)
         return ids
 
+    async def discover_by_genres(
+        self, genre_ids: list[int], *, pages: int = 5, min_votes: int = 500
+    ) -> list[int]:
+        """Taste-filtered discover: well-voted films in the user's top genres (SPEC §4.2).
+
+        An attribute-based candidate source that reaches on-taste films the rec-graph misses.
+        Genres OR-combined; the vote floor keeps results recognizable; scoring adds precision.
+        """
+        if not genre_ids:
+            return []
+        ids: list[int] = []
+        for page in range(1, pages + 1):
+            try:
+                resp = await self._client.get(
+                    f"{self._settings.tmdb_api_base}/discover/movie",
+                    params={
+                        "api_key": self._settings.tmdb_api_key,
+                        "with_genres": "|".join(str(g) for g in genre_ids),
+                        "sort_by": "vote_count.desc",
+                        "vote_count.gte": min_votes,
+                        "page": page,
+                    },
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                logger.warning("TMDB genre discover failed (page %s): %s", page, exc)
+                break
+            ids.extend(r["id"] for r in resp.json().get("results", []) if "id" in r)
+        return ids
+
     async def grow_candidate_pool(
         self,
         seed_films: list[Film],
         exclude_ids: set[int],
         *,
         backfill_pages: int = 4,
+        taste_pages: int = 5,
         expand_top: int = 200,
-        max_candidates: int = 1500,
+        max_candidates: int = 3000,
         memo: dict[int, Film] | None = None,
     ) -> tuple[list[Film], list[float]]:
-        """Build + enrich the candidate pool, expanding up to 2 hops for recall (SPEC §4.2).
+        """Build + enrich the candidate pool from three sources, for recall (SPEC §4.2).
 
-        Hop 1 = seeds' TMDB recommendations/similar (+ a discover backfill). If that leaves
-        room under `max_candidates`, hop 2 adds the neighbours of the strongest hop-1
-        candidates — reaching films no seed points to directly (the main recall lever).
-        Returns enriched candidate Films + aligned provenance (how many neighbours surfaced
-        each — the rec-graph signal; 2-hop hits count half). `memo` lets callers share
-        enrichment across calls (e.g. eval splits) to avoid refetching.
+        (1) the rec-graph: seeds' TMDB recommendations/similar; (2) **taste-filtered discover**:
+        well-voted films in the user's top genres (reaches on-taste films the graph misses);
+        (3) a generic acclaimed/popular backfill. If there's room under `max_candidates`, a 2nd
+        hop adds neighbours of the strongest hop-1 candidates. Returns enriched candidate Films
+        + aligned provenance (graph hits count; taste-discover enters at 1.0, 2-hop at 0.5).
+        `memo` lets callers share enrichment across calls (e.g. eval splits).
         """
         cache = memo if memo is not None else {}
 
@@ -116,10 +197,14 @@ class TMDBClient:
                 cache.update(await self.get_movies(missing))
 
         backfill = await self.discover_backfill(pages=backfill_pages)
+        taste_ids = await self.discover_by_genres(_top_genre_ids(seed_films), pages=taste_pages)
         provenance: dict[int, float] = {
             cid: float(n)
             for cid, n in build_candidate_pool(seed_films, exclude_ids, backfill).items()
         }
+        for tid in taste_ids:  # attribute-matched → enter at a single-graph-hit weight
+            if tid not in exclude_ids:
+                provenance[tid] = max(provenance.get(tid, 0.0), 1.0)
 
         def _ranked() -> list[int]:
             return [c for c, _ in sorted(provenance.items(), key=lambda kv: kv[1], reverse=True)]
@@ -216,6 +301,8 @@ def build_candidate_pool(
     return provenance
 
 
-def create_tmdb_client(http_client: httpx.AsyncClient) -> TMDBClient:
-    """Build a TMDBClient from application settings."""
-    return TMDBClient(http_client, get_settings())
+def create_tmdb_client(
+    http_client: httpx.AsyncClient, redis: aioredis.Redis | None = None
+) -> TMDBClient:
+    """Build a TMDBClient from application settings (Redis enables response caching)."""
+    return TMDBClient(http_client, get_settings(), redis=redis)

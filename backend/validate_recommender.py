@@ -35,7 +35,7 @@ TOP_N = 20
 async def run(username: str) -> None:
     redis = create_redis()
     async with httpx.AsyncClient(timeout=15.0) as http:
-        tmdb = create_tmdb_client(http)
+        tmdb = create_tmdb_client(http, redis)
 
         # 1. Scrape ------------------------------------------------------------
         t = time.perf_counter()
